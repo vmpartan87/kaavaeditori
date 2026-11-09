@@ -1,0 +1,1118 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kaavaluonnoseditori – Espoo, Helsinki, Vantaa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/dist/polygon-clipping.umd.min.js"></script>
+<style>
+
+/* Layout: drafting sheet (SVG, north up, metres) left; tool column right; stacks on phones. */
+:root{
+  --bg:#f3f4f1; --panel:#ffffff; --ink:#1c2227; --muted:#5b646b; --line:#d4d8d3;
+  --ak:#efd6ae; --mass:#c4875a; --mass-ink:#4a2c14; --piste:#b8795a; --park:#dcdedb; --stall:#ffffff;
+  --kansi:#2c6e8f; --ramp:#6b7177; --naap:#ebeae4; --rak:#d1d3cf; --accent:#1f6f78; --ok:#1f7a3a; --bad:#b0392c; --sel:#d4552b;
+  --display:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif; --body:"Barlow",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#13171a; --panel:#1b2024; --ink:#e6e8e5; --muted:#99a2a7; --line:#30383e;
+  --ak:#544430; --mass:#b4774b; --mass-ink:#fbe6d2; --piste:#a8704f; --park:#2b3135; --stall:#3a4146;
+  --kansi:#63b0c8; --ramp:#8d949a; --naap:#20262a; --rak:#394045; --accent:#5fb3bb; --ok:#5cc27a; --bad:#ec7b6c; --sel:#f08a5d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#13171a; --panel:#1b2024; --ink:#e6e8e5; --muted:#99a2a7; --line:#30383e;
+  --ak:#544430; --mass:#b4774b; --mass-ink:#fbe6d2; --piste:#a8704f; --park:#2b3135; --stall:#3a4146;
+  --kansi:#63b0c8; --ramp:#8d949a; --naap:#20262a; --rak:#394045; --accent:#5fb3bb; --ok:#5cc27a; --bad:#ec7b6c; --sel:#f08a5d; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14.5px;line-height:1.4}
+.wrap{max-width:1500px;margin:0 auto;padding-block:16px 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 20px;align-items:flex-end;border-bottom:2px solid var(--ink);padding-bottom:8px;margin-bottom:14px}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(22px,2.6vw,30px);margin:0;text-wrap:balance}
+.sub{color:var(--muted);font-size:13px}
+.stamp{font-family:var(--display);font-weight:600;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--bad);border:1.5px solid var(--bad);padding:3px 7px}
+.grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(320px,1fr);gap:16px;align-items:start}
+@media (max-width:960px){.grid{grid-template-columns:1fr}}
+.sheet{background:var(--panel);border:1px solid var(--line);position:sticky;top:env(safe-area-inset-top,0px)}
+@media (max-width:960px){.sheet{position:static}}
+.toolbar{display:flex;flex-wrap:wrap;gap:6px;padding:8px;border-bottom:1px solid var(--line);align-items:center}
+.toolbar .sp{flex:1}
+#plan{display:block;width:100%;height:auto;aspect-ratio:1/1;max-height:82vh;touch-action:none;cursor:grab;user-select:none}
+#plan.dragging{cursor:grabbing}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;padding:6px 10px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:13px;height:9px;vertical-align:-1px;margin-right:4px;border:1px solid var(--muted)}
+.col{display:flex;flex-direction:column;gap:12px;min-width:0}
+section{background:var(--panel);border:1px solid var(--line);padding:10px 12px}
+h2{font-family:var(--display);font-weight:600;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;margin:0 0 8px;color:var(--muted)}
+button,select,input{font:inherit;color:var(--ink)}
+button{padding:5px 10px;border:1px solid var(--muted);background:transparent;cursor:pointer;border-radius:2px}
+button:hover{border-color:var(--ink)}
+button.pri{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button.del{border-color:var(--bad);color:var(--bad)}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+select,input[type=text],input[type=number]{box-sizing:border-box;max-width:100%;padding:4px 6px;background:var(--panel);border:1px solid var(--muted);border-radius:2px;min-width:0}
+input[type=number]{width:100%;font-family:var(--mono);font-size:13px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.row > select{flex:1;min-width:0}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.kpi{border-left:3px solid var(--accent);padding:1px 0 1px 8px}
+.kpi b{display:block;font-family:var(--display);font-weight:700;font-size:23px;font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi span{font-size:11.5px;color:var(--muted)}
+@media (max-width:520px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+ul.checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:13px}
+ul.checks li{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:6px}
+ul.checks em{font-style:normal;font-family:var(--mono);font-size:12px;color:var(--muted);text-align:right}
+.ok{color:var(--ok)} .bad{color:var(--bad)}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px}
+.fields label{display:flex;flex-direction:column;gap:2px;font-size:12.5px;color:var(--muted)}
+.fields label.wide{grid-column:1/-1}
+.fields .chk{flex-direction:row;align-items:center;gap:6px;color:var(--ink)}
+.hint{font-size:12.5px;color:var(--muted);margin:6px 0 0}
+.objlist{display:flex;flex-direction:column;gap:3px;margin-top:8px;max-height:220px;overflow:auto}
+.objlist button{display:flex;justify-content:space-between;gap:8px;text-align:left;border-color:var(--line);font-size:13px}
+.objlist button[aria-pressed="true"]{border-color:var(--sel);box-shadow:inset 3px 0 0 var(--sel)}
+.objlist span{color:var(--muted);font-family:var(--mono);font-size:12px}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+td,th{padding:3px 5px;border-bottom:1px solid var(--line);text-align:right}
+td:first-child,th:first-child{text-align:left;color:var(--muted);font-weight:400}
+.plans{display:flex;flex-direction:column;gap:4px;margin-top:8px;max-height:200px;overflow:auto}
+.plans div{display:flex;gap:6px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:3px 0;font-size:13px}
+.plans small{color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:7px 14px;font-size:13px;border-radius:2px}
+footer{margin-top:14px;font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 18px}
+svg text{font-family:var(--body)}
+
+/* ---------- sovelluksen asettelu ---------- */
+[hidden]{display:none!important}
+html,body{margin:0}
+body{min-height:100vh}
+:root{--radius:10px;--shadow:0 1px 2px #0000000d,0 4px 14px #00000012;--accent-soft:#e4f1f2;--warn:#a15c07;--warn-soft:#fdf1df;--ok-soft:#e5f3e8}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--accent-soft:#1d3134;--warn:#f0b35a;--warn-soft:#3a2e1c;--ok-soft:#1c3123;--shadow:0 1px 2px #0006,0 4px 14px #0005}}
+button,select,input[type=text],input[type=number]{border-radius:6px}
+button{padding:6px 12px;border-color:var(--line);background:var(--panel);transition:border-color .12s,background .12s}
+button:hover{border-color:var(--ink)}
+button.pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.pri:hover{filter:brightness(1.08)}
+button.ghost{background:transparent}
+button.del{background:transparent}
+select,input[type=text],input[type=number]{border-color:var(--line);padding:6px 8px}
+
+.top{position:sticky;top:0;z-index:20;display:block;margin:0;padding:0;background:var(--panel);border-bottom:1px solid var(--line);box-shadow:var(--shadow)}
+.topin{max-width:1560px;margin:0 auto;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:10px max(16px,env(safe-area-inset-left,0px))}
+.brand{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+.brand b{font-family:var(--display);font-size:21px;font-weight:700}
+.brand span{font-size:11.5px;color:var(--bad);font-family:var(--display);letter-spacing:.06em;text-transform:uppercase}
+.area{display:flex;gap:6px;align-items:center;flex:1 1 300px;min-width:0}
+.area select{flex:1;min-width:0;font-weight:600}
+.planbar{display:flex;gap:6px;align-items:center;flex:1 1 460px;justify-content:flex-end;flex-wrap:wrap}
+.planbar input{flex:1 1 180px;min-width:140px;font-weight:600}
+.status{font-size:12px;padding:3px 9px;border-radius:999px;white-space:nowrap;background:var(--bg);color:var(--muted)}
+.status.ok{background:var(--ok-soft);color:var(--ok)}
+.status.dirty{background:var(--warn-soft);color:var(--warn)}
+.wrap{padding-top:14px}
+.sub{margin:0 0 10px;font-size:13px;color:var(--muted)}
+@media (min-width:961px){.grid{grid-template-columns:minmax(0,1.55fr) minmax(340px,1fr)}}
+.sheet,.side,section{border-radius:var(--radius);box-shadow:var(--shadow);border-color:var(--line)}
+.sheet{overflow:hidden;position:static}
+.toolbar{gap:6px;padding:8px 10px;background:var(--panel)}
+.toolbar button{font-size:13.5px}
+.side{background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+.kpis{padding:12px 14px;border-bottom:1px solid var(--line);gap:10px 12px}
+.kpi b{font-size:21px}
+.tabs{display:flex;gap:2px;padding:6px 8px 0;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:thin}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;padding:8px 10px;font-weight:600;font-size:13.5px;color:var(--muted);white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tabs button:hover{color:var(--ink)}
+.pane{padding:12px 14px 16px;display:flex;flex-direction:column;gap:12px}
+.pane h3{font-family:var(--display);font-weight:600;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;margin:4px 0 0;color:var(--muted)}
+.pane .box{border:1px solid var(--line);border-radius:8px;padding:10px}
+.objlist{max-height:260px}
+.objlist button{border-radius:6px}
+
+.plans{max-height:none;gap:6px;margin-top:0}
+.plans .pl{display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
+.plans .pl.cur{border-color:var(--accent);background:var(--accent-soft)}
+.plans .pl small{color:var(--muted)}
+.plans .pl .row{flex-wrap:nowrap}
+.plans .pl button{padding:4px 9px;font-size:12.5px}
+.tag{font-size:11px;background:var(--accent);color:#fff;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:1px}
+
+.wl{display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:2px 8px;align-items:center;margin-top:6px}
+.wl input[type=range]{width:84px;accent-color:var(--accent)}
+.wst{grid-column:1/-1;font-size:11.5px;color:var(--muted);margin:-2px 0 2px 22px}
+.wst:empty{display:none}
+.wst.bad{color:var(--bad)}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px}
+.mlg{display:flex;flex-wrap:wrap;gap:2px 10px;font-size:11.5px;color:var(--muted);margin-top:6px}
+.mlg i,.sw{display:inline-block;width:12px;height:9px;margin-right:4px;vertical-align:-1px;border:1px solid #0004}
+.hint.bad{color:var(--bad)}
+
+/* uuden alueen ikkuna */
+dialog#va{border:0;padding:0;border-radius:14px;box-shadow:0 20px 60px #0005;width:min(1100px,96vw);max-height:94vh;background:var(--panel);color:var(--ink)}
+dialog#va::backdrop{background:#0b141a99}
+.vain{padding:16px 18px 18px;display:flex;flex-direction:column;gap:8px;max-height:94vh;box-sizing:border-box;overflow:auto}
+.vahead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.vahead h2{margin:0;font-size:15px;color:var(--ink);letter-spacing:.06em}
+.x{border:0;font-size:24px;line-height:1;padding:2px 10px;background:transparent;color:var(--muted)}
+.x:hover{color:var(--ink)}
+#va-svg{display:block;width:100%;height:min(58vh,600px);background:#e9e8e2;border:1px solid var(--line);border-radius:8px;touch-action:none;cursor:grab;user-select:none}
+.valist{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;gap:6px;align-items:center;border:1px solid #ff5a1f;border-radius:999px;padding:2px 4px 2px 10px;font-family:var(--mono);font-size:12.5px}
+.chip small{color:var(--muted)}
+.chip button{border:0;padding:0 6px;font-size:15px;line-height:1;background:transparent}
+.tot{font-family:var(--display);margin-left:6px}
+.vahits{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;border:1px solid var(--accent);border-radius:8px;background:var(--accent-soft)}
+.vahits button{font-size:13px;padding:5px 10px;text-align:left}
+.vahits button b{font-family:var(--display)}
+.vahits button:disabled{opacity:.55;cursor:not-allowed}
+.toast{border-radius:8px;box-shadow:var(--shadow);z-index:50}
+@media (max-width:960px){ .sheet{top:auto} .planbar{justify-content:flex-start} }
+@media (max-width:600px){ .brand b{font-size:18px} .planbar button{flex:1} .top{position:static} }
+</style>
+</head>
+<body>
+<header class="top"><div class="topin">
+  <div class="brand"><b>Kaavaluonnoseditori</b><span>Viitesuunnitelma – ei oikeusvaikutteinen</span></div>
+  <div class="area"><select id="tontti" aria-label="Suunnittelualue"></select><button type="button" id="va-open" class="ghost">+ Uusi alue</button></div>
+  <div class="planbar">
+    <input type="text" id="plan-name" placeholder="Nimetön luonnos" aria-label="Suunnitelman nimi">
+    <span class="status" id="status">Ei tallennettu</span>
+    <button type="button" class="pri" id="save" title="Ctrl+S">Tallenna</button>
+    <button type="button" id="save-as" title="Tallentaa kopion uudella nimellä ja jatkaa sen muokkausta">Tallenna uutena versiona</button>
+  </div>
+</div></header>
+
+<div class="wrap">
+<p class="sub" id="sub">Ladataan…</p>
+<div class="grid">
+  <div class="sheet">
+    <div class="toolbar">
+      <button type="button" id="add-lamelli">+ Lamelli</button>
+      <button type="button" id="add-piste">+ Pistetalo</button>
+      <button type="button" id="add-piha">+ Pihapaikat</button>
+      <button type="button" id="add-kansi">+ Pihakansi</button>
+      <button type="button" id="add-ramppi">+ Ramppi</button>
+      <span class="sp"></span>
+      <button type="button" id="undo" title="Kumoa (Ctrl+Z)">Kumoa</button>
+      <button type="button" id="fit" title="Sovita näkymä alueeseen">Sovita</button>
+    </div>
+    <svg id="plan" viewBox="0 0 200 200" role="img" aria-label="Asemapiirros: massat ja pysäköinti"></svg>
+    <div class="legend">
+      <span><i style="background:var(--ak)"></i>Suunnittelualue</span>
+      <span><i style="border-style:dashed;background:transparent"></i>Rakennusala</span>
+      <span><i style="background:var(--mass)"></i>Lamelli / pistetalo</span>
+      <span><i style="background:var(--stall)"></i>Pihapaikat</span>
+      <span><i style="border:1.5px dashed var(--kansi);background:transparent"></i>Pihakansi / halli</span>
+      <span><i style="background:var(--ramp)"></i>Ramppi</span>
+      <span><i style="background:var(--rak)"></i>Nykyinen rakennus</span>
+      <span><b style="color:var(--mass-ink)">V*</b> = ylin kerros sisäänvedetty</span>
+    </div>
+  </div>
+
+  <aside class="side">
+    <div class="kpis">
+      <div class="kpi"><b id="k-kem">–</b><span>kerrosala k-m²</span></div>
+      <div class="kpi"><b id="k-e">–</b><span>tehokkuus e</span></div>
+      <div class="kpi"><b id="k-as">–</b><span>asuntoa (arvio)</span></div>
+      <div class="kpi"><b id="k-ap">–</b><span>autopaikat / tarve</span></div>
+      <div class="kpi"><b id="k-piha">–</b><span>piha m² <span id="k-pihas"></span></span></div>
+      <div class="kpi"><b id="k-pp">–</b><span>pyöräpaikkaa</span></div>
+      <div class="kpi" title="Pihakerroin = piha-ala (maanvarainen + kannella) / kerrosala"><b id="k-pk">–</b><span>pihakerroin</span></div>
+      <div class="kpi"><b id="k-pas">–</b><span>piha m² / asunto</span></div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Paneelit">
+      <button type="button" role="tab" data-t="kohde">Kohde</button>
+      <button type="button" role="tab" data-t="tarkistus">Tarkistus</button>
+      <button type="button" role="tab" data-t="kartta">Kartta ja melu</button>
+      <button type="button" role="tab" data-t="normi">Normi</button>
+      <button type="button" role="tab" data-t="suunnitelmat">Suunnitelmat</button>
+      <button type="button" role="tab" data-t="alue">Alue</button>
+    </nav>
+
+    <div class="pane" data-tab="kohde" role="tabpanel">
+      <div id="sel"><p class="hint">Valitse kohde piirroksesta tai listasta.</p></div>
+      <h3>Kaikki kohteet</h3>
+      <div class="objlist" id="objlist"></div>
+    </div>
+
+    <div class="pane" data-tab="tarkistus" role="tabpanel" hidden>
+      <ul class="checks" id="checks"></ul>
+      <h3>Vertailu lähtöpohjiin</h3>
+      <div style="overflow-x:auto"><table id="cmp"></table></div>
+    </div>
+
+    <div class="pane" data-tab="kartta" role="tabpanel" hidden>
+      <div id="wms"></div>
+      <h3>Melu taloissa (Lden)</h3>
+      <div id="melu-res"></div>
+      <p class="hint">Meluselvitykset (Espoo ja Helsinki 2022) on laskettu nykytilanteelle: suunnitellut talot eivät siinä vaimenna melua, joten julkisivuluvut ovat vapaan kentän arvioita ja talojen katvepuolet ovat todellisuudessa hiljaisempia. Ohjearvo oleskelualueille on päivällä 55 dB (LAeq) – Lden on eri suure, joten tulos on suuntaa-antava.</p>
+      <h3>Piirroksen omat tasot</h3>
+      <div class="row" id="layers"></div>
+    </div>
+
+    <div class="pane" data-tab="normi" role="tabpanel" hidden>
+      <div class="fields">
+        <label class="wide">Pysäköintinormi
+          <select id="n-preset">
+            <option value="ak">Espoo AK: 1 ap / 110 k-m², väh. 0,5 ap/as</option>
+            <option value="ak-kev">Espoo AK keskitetty (alueluokat I–II): −30 %, väh. 0,4 ap/as</option>
+            <option value="ap12">Espoo AP/AR luokat I–II: 1 ap / 85 k-m², väh. 1 ap/as</option>
+            <option value="ap34">Espoo AP/AR luokat III–IV: 1 ap / 70 k-m², väh. 1 ap/as</option>
+            <option value="oma">Oma normi</option>
+          </select></label>
+        <label>k-m² / ap<input type="number" id="n-normi" min="30" max="400" step="5"></label>
+        <label>Kevennys %<input type="number" id="n-kev" min="0" max="60" step="5"></label>
+        <label>Väh. ap / asunto<input type="number" id="n-apmin" min="0" max="2" step="0.05"></label>
+        <label>Asuntokeskikoko m²<input type="number" id="n-koko" min="25" max="120" step="1"></label>
+        <label>HA / kem<input type="number" id="n-hak" min="0.6" max="0.9" step="0.01"></label>
+        <label>Rakennusväli väh. m<input type="number" id="n-vali" min="4" max="30" step="0.5"></label>
+        <label>Kerrosluku min<input type="number" id="n-kmin" min="1" max="12" step="1"></label>
+        <label>Kerrosluku max<input type="number" id="n-kmax" min="1" max="16" step="1"></label>
+      </div>
+      <p class="hint">Valmiit pysäköintinormit ovat Espoon (taulukkoarvot TARKISTA); Helsingin ja Vantaan alueilla käytä toistaiseksi omaa normia. Halli talon alla 30 m²/ap (leveys oletuksena 16 m), pihakannen alla 28 m²/ap, pihapaikat 2,5 × 5 m + 6 m ajoväylä (16 m syvä kenttä = kaksi riviä, 11 m = yksi), ramppi vähintään 27 m.</p>
+    </div>
+
+    <div class="pane" data-tab="suunnitelmat" role="tabpanel" hidden>
+      <div class="plans" id="plans"></div>
+      <p class="hint" id="plans-hint"></p>
+      <h3>Tiedostot</h3>
+      <div class="row"><button type="button" id="export-json">Lataa JSON</button><button type="button" id="export-svg">Lataa piirros (SVG)</button><button type="button" id="import-json">Tuo JSON…</button><input type="file" id="import-file" accept=".json,application/json" hidden></div>
+    </div>
+
+    <div class="pane" data-tab="alue" role="tabpanel" hidden>
+      <h3>Lähtöpohja</h3>
+      <p class="hint" style="margin:0">Aloittaa uuden, tallentamattoman luonnoksen valitusta pohjasta.</p>
+      <div class="row"><select id="pohja" aria-label="Lähtöpohja"></select><button type="button" id="lataa-pohja">Aloita tästä</button><button type="button" class="del" id="del-pohja" title="Piilota valittu lähtöpohja">Poista pohja</button></div>
+      <p class="hint" id="kaava"></p>
+      <p class="hint" id="nt-msg" hidden></p>
+      <div class="row"><button type="button" class="del" id="del-tontti" title="Poista oma alue tai piilota valmis alue">Poista tämä alue</button></div>
+      <p class="hint" id="hidden-info"></p>
+    </div>
+  </aside>
+</div>
+<footer><span>Avain Rakennuttaja Oy</span><span id="src"></span><span>Laskentasäännöt: kaavasuunnitelma-skilli 4.5</span></footer>
+</div>
+
+<dialog id="va" aria-labelledby="va-title"><div class="vain">
+  <div class="vahead"><h2 id="va-title">Uusi suunnittelualue</h2><button type="button" class="x" id="va-close" aria-label="Sulje">×</button></div>
+  <div class="row"><input type="text" id="va-q" placeholder="Osoite (esim. Kuusitie 1 tai Kuusitie 1, Vantaa) tai kiinteistötunnus (49-…, 91-…, 92-…)" style="flex:1;min-width:220px" aria-label="Osoite tai kiinteistötunnus"><button type="button" class="pri" id="va-go">Hae</button>
+    <select id="va-city" aria-label="Kaupunki, jonka palvelusta kiinteistörajat haetaan" title="Haku valitsee kaupungin itse. Vaihda käsin, jos siirrät karttaa kuntarajan yli." style="flex:0 0 auto"><option value="Espoo">Espoo</option><option value="Helsinki">Helsinki</option><option value="Vantaa">Vantaa</option></select>
+    <select id="va-base" aria-label="Taustakartta" style="flex:0 0 auto"><option value="orto">Ilmakuva</option><option value="kiint">Kiinteistökartta</option><option value="kanta">Kantakartta</option></select></div>
+  <div class="vahits" id="va-hits" hidden></div>
+  <p class="hint" id="va-msg" style="margin:0">Hae osoite (Espoo, Helsinki tai Vantaa) ja klikkaa kartalta tontit, jotka kuuluvat suunnitelmaan (uusi klikkaus poistaa). Vedä siirtääksesi, rullaa lähentääksesi.</p>
+  <svg id="va-svg" role="img" aria-label="Tonttien valintakartta"></svg>
+  <div class="valist" id="va-list"></div>
+  <div class="row"><input type="text" id="va-name" placeholder="Alueen nimi (valinnainen)" style="flex:1;min-width:200px" aria-label="Alueen nimi"><button type="button" class="pri" id="va-create" disabled>Luo suunnittelualue</button><button type="button" id="va-clear">Tyhjennä valinta</button><button type="button" id="va-skip">Peruuta</button></div>
+</div></dialog>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+
+const $ = id => document.getElementById(id);
+const ROM = ['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI'];
+const fmt = n => Math.round(n).toLocaleString('fi-FI');
+const fi = (x,d=2) => Number(x).toFixed(d).replace('.',',');
+const rnd = x => Math.floor(x + 0.5);
+const RAMP_MIN = 27, HALLI_M2 = 30, KANSI_M2 = 28;
+const PRESETS = {ak:{normi:110,kev:0,apmin:0.5}, 'ak-kev':{normi:110,kev:30,apmin:0.4}, ap12:{normi:85,kev:0,apmin:1}, ap34:{normi:70,kev:0,apmin:1}};
+const TYYPIT = {lamelli:'Lamelli', piste:'Pistetalo', piha:'Pihapaikat', kansi:'Pihakansi', ramppi:'Ramppi'};
+
+let DATA=null, T=null, S=null, sel=null, hist=[], db=null, dl=null, layers={tonttijako:true, rakennusala:true, naapurit:true, mitat:true};
+
+function toast(t){ const e=$('toast'); e.textContent=t; e.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>e.hidden=true,2600); }
+
+// ---------- geometria (paikallinen kehys, metrit) ----------
+function rectPts(o){ if(o.poly) return o.poly.map(([x,y])=>{ const t=o.a*Math.PI/180,c=Math.cos(t),s=Math.sin(t); return [o.cx+x*c-y*s, o.cy+x*s+y*c]; });
+  const t=o.a*Math.PI/180, c=Math.cos(t), s=Math.sin(t), hl=o.l/2, hd=o.d/2;
+  return [[-hl,-hd],[hl,-hd],[hl,hd],[-hl,hd]].map(([x,y])=>[o.cx+x*c-y*s, o.cy+x*s+y*c]); }
+function area(P){ let a=0; for(let i=0;i<P.length;i++){ const [x1,y1]=P[i],[x2,y2]=P[(i+1)%P.length]; a+=x1*y2-x2*y1; } return Math.abs(a)/2; }
+function segDist(p,a,b){ const dx=b[0]-a[0], dy=b[1]-a[1], L=dx*dx+dy*dy; let t=L?((p[0]-a[0])*dx+(p[1]-a[1])*dy)/L:0; t=Math.max(0,Math.min(1,t)); return Math.hypot(p[0]-a[0]-t*dx, p[1]-a[1]-t*dy); }
+function polyDist(P,Q){ if(clipArea(P,Q)>1e-6) return 0; let d=Infinity;
+  for(const p of P) for(let j=0;j<Q.length;j++) d=Math.min(d,segDist(p,Q[j],Q[(j+1)%Q.length]));
+  for(const q of Q) for(let i=0;i<P.length;i++) d=Math.min(d,segDist(q,P[i],P[(i+1)%P.length])); return d; }
+function inside(p,poly){ let c=false; for(let i=0,j=poly.length-1;i<poly.length;j=i++){ const [xi,yi]=poly[i],[xj,yj]=poly[j];
+  if(((yi>p[1])!=(yj>p[1])) && (p[0]<(xj-xi)*(p[1]-yi)/(yj-yi)+xi)) c=!c; } return c; }
+function ccw(P){ let a=0; for(let i=0;i<P.length;i++){ const [x1,y1]=P[i],[x2,y2]=P[(i+1)%P.length]; a+=x1*y2-x2*y1; } return a>0?P:[...P].reverse(); }
+// Sutherland–Hodgman: subject (any simple) clipped by convex clip polygon
+function clip(subject, clipP){ let out=ccw(subject); const C=ccw(clipP);
+  for(let i=0;i<C.length && out.length;i++){ const A=C[i], B=C[(i+1)%C.length], inp=out; out=[];
+    const side=p=>(B[0]-A[0])*(p[1]-A[1])-(B[1]-A[1])*(p[0]-A[0]);
+    for(let j=0;j<inp.length;j++){ const P=inp[j], Q=inp[(j+1)%inp.length], sp=side(P), sq=side(Q);
+      if(sp>=0) out.push(P);
+      if((sp>=0)!==(sq>=0)){ const t=sp/(sp-sq); out.push([P[0]+t*(Q[0]-P[0]), P[1]+t*(Q[1]-P[1])]); } } }
+  return out; }
+function isConvex(P){ let s=0; for(let i=0;i<P.length;i++){ const a=P[i],b=P[(i+1)%P.length],c=P[(i+2)%P.length]; const z=(b[0]-a[0])*(c[1]-b[1])-(b[1]-a[1])*(c[0]-b[0]); if(Math.abs(z)<1e-9) continue; if(s===0) s=Math.sign(z); else if(Math.sign(z)!==s) return false; } return true; }
+function clipArea(P,Q){ if(isConvex(Q)){ const r=clip(P,Q); return r.length>2?area(r):0; } if(isConvex(P)){ const r=clip(Q,P); return r.length>2?area(r):0; } return 0; }
+const isMass = o => o.tyyppi==='lamelli' || o.tyyppi==='piste';
+
+// ---------- näkymä ----------
+let VB=null;
+const R2 = p => { const t=T.ang*Math.PI/180, c=Math.cos(t), s=Math.sin(t); return [p[0]*c-p[1]*s, p[0]*s+p[1]*c]; };   // paikallinen -> todellinen (origon suhteen)
+const IR = p => { const t=-T.ang*Math.PI/180, c=Math.cos(t), s=Math.sin(t); return [p[0]*c-p[1]*s, p[0]*s+p[1]*c]; };
+const sv = p => { const r=R2(p); return [r[0], -r[1]]; };                    // svg-koordinaatit (m), pohjoinen ylös
+const pts = P => P.map(p=>sv(p).map(v=>v.toFixed(2)).join(',')).join(' ');
+function fitView(){ const xs=[],ys=[]; for(const p of T.kortteli){ const q=sv(p); xs.push(q[0]); ys.push(q[1]); }
+  const mx=(Math.min(...xs)+Math.max(...xs))/2, my=(Math.min(...ys)+Math.max(...ys))/2, w=Math.max(Math.max(...xs)-Math.min(...xs), Math.max(...ys)-Math.min(...ys))+60;
+  VB=[mx-w/2,my-w/2,w,w]; applyVB(); }
+function applyVB(){ $('plan').setAttribute('viewBox', VB.map(v=>v.toFixed(2)).join(' ')); }
+function evLocal(ev){ const svg=$('plan'), pt=svg.createSVGPoint(); pt.x=ev.clientX; pt.y=ev.clientY; const q=pt.matrixTransform(svg.getScreenCTM().inverse()); return IR([q.x,-q.y]); }
+
+// ---------- laskenta (skilli 4.5) ----------
+function calc(){
+  const n=S.normi, objs=S.objs, A=T.A;
+  const masses=objs.filter(isMass), P=o=>rectPts(o);
+  const ramps=objs.filter(o=>o.tyyppi==='ramppi'), pihat=objs.filter(o=>o.tyyppi==='piha'), kannet=objs.filter(o=>o.tyyppi==='kansi');
+  let kem=0, foot=0; const kemM={};
+  for(const m of masses){ const a=m.l*m.d; foot+=a; let rIn=0; for(const r of ramps) rIn+=clipArea(P(r),P(m));
+    kemM[m.id]=a*(m.krs-1+m.ylin)-rIn; kem+=kemM[m.id]; }
+  const as=rnd(kem*n.hak/n.koko);
+  const tarve=Math.max(rnd(kem/n.normi*(1-n.kev/100)), rnd(n.apmin*as));
+  const inva=Math.ceil(tarve/30), pp=Math.max(Math.ceil(kem/30), 2*as);
+  let apPiha=0, pihaAla=0; for(const o of pihat){ const rows=o.d>=16?2:o.d>=11?1:0; apPiha+=rows*Math.floor(o.l/2.5); pihaAla+=o.l*o.d; }
+  let apHalli=0; for(const m of masses) if(m.halli){ let rIn=0; for(const r of ramps) rIn+=clipArea(P(r),P(m)); apHalli+=Math.floor((m.l*Math.max(m.d,m.hlev||m.d)-rIn)/HALLI_M2); }
+  let apKansi=0, kansiAla=0; for(const k of kannet){ let a=area(P(k)); for(const m of masses) a-=clipArea(P(m),P(k)); a=Math.max(0,a); kansiAla+=a; apKansi+=Math.floor(a/KANSI_M2); }
+  let rampUlko=0; for(const r of ramps){ let a=r.l*r.d; for(const m of masses) a-=clipArea(P(r),P(m)); rampUlko+=Math.max(0,a); }
+  const tarj=apPiha+apHalli+apKansi, piha=A-foot-pihaAla-rampUlko, le=10*as;
+  // tarkistukset
+  const K=T.kortteli, bad=new Set(); let rmin=Infinity;
+  for(const m of masses){ const Q=P(m); let w=Infinity;
+    for(let e=0;e<K.length;e++) w=Math.min(w, polyDist(Q,[K[e],K[(e+1)%K.length]])-(T.sb[T.reunat[e]]??4));
+    if(!Q.every(p=>inside(p,K))) w=Math.min(w,-1); if(w<-1e-6) bad.add(m.id); rmin=Math.min(rmin,w); }
+  let vmin=Infinity; const pairs=[];
+  for(let i=0;i<masses.length;i++) for(let j=i+1;j<masses.length;j++){ const d=polyDist(P(masses[i]),P(masses[j])); vmin=Math.min(vmin,d);
+    pairs.push([masses[i].id,masses[j].id,d,Math.max(masses[i].krs,masses[j].krs)*3]); if(d<S.asetus.vali-1e-6){bad.add(masses[i].id);bad.add(masses[j].id);} }
+  let parkOk=true; for(const o of [...pihat]){ const Q=P(o); if(!Q.every(p=>inside(p,K))) {parkOk=false; bad.add(o.id);} for(const m of masses) if(clipArea(Q,P(m))>0.5){ parkOk=false; bad.add(o.id);} }
+  for(const r of ramps){ const Q=P(r); let ins=0; for(const m of masses) ins+=clipArea(Q,P(m)); const a=r.l*r.d; if(ins>0.5 && ins<a-0.5){ parkOk=false; bad.add(r.id);} if(!Q.every(p=>inside(p,K))){ parkOk=false; bad.add(r.id);} }
+  const tarvRamp = masses.some(m=>m.halli) || kannet.length>0;
+  const rampOk = !tarvRamp || ramps.some(r=>r.l>=RAMP_MIN-1e-6);
+  const syvOk = masses.every(m=> m.tyyppi==='piste' ? (m.d>=16 && m.d<=24) : (m.d>=10 && m.d<=17));
+  const kkOk = masses.every(m=>m.krs>=S.asetus.kmin && m.krs<=S.asetus.kmax && m.ylin>=0.5 && m.ylin<=1);
+  return {kem,kemM,e:kem/A,foot,as,tarve,inva,pp,apPiha,apHalli,apKansi,tarj,pihaAla,kansiAla,rampUlko,piha,le,rmin:masses.length?rmin:0,vmin:masses.length>1?vmin:0,pairs,bad,parkOk,tarvRamp,rampOk,syvOk,kkOk,masses};
+}
+
+// ---------- piirto ----------
+function render(){
+  const R=calc(), svg=$('plan'); let h='';
+  const sw = VB[2]/600;  // ~1 px viiva
+  h+=`<rect x="${VB[0]-500}" y="${VB[1]-500}" width="${VB[2]+1000}" height="${VB[3]+1000}" fill="var(--panel)" data-bg="1"/>`;
+  const bo=hasBase(); h+=wmsImgs('base');
+  if(layers.naapurit){ for(const n of T.naapurit) h+=`<polygon points="${pts(n)}" fill="var(--naap)" fill-opacity="${bo?0:1}" stroke="var(--muted)" stroke-width="${sw*.6}" data-bg="1"/>`;
+    for(const b of T.rakennukset){ h+=`<polygon points="${pts(b.xy)}" fill="var(--rak)" fill-opacity="${bo?0.3:1}" stroke="var(--muted)" stroke-width="${sw*.6}" data-bg="1"/>`;
+      const c=b.xy.reduce((s,p)=>[s[0]+p[0]/b.xy.length,s[1]+p[1]/b.xy.length],[0,0]), q=sv(c); h+=`<text x="${q[0]}" y="${q[1]}" font-size="${sw*11}" text-anchor="middle" dominant-baseline="middle" fill="var(--muted)" pointer-events="none">${ROM[b.krs]||''}</text>`; }
+    for(const k of T.kadut){ const q=sv(k.xy); h+=`<text x="${q[0]}" y="${q[1]}" font-size="${sw*11}" font-style="italic" text-anchor="middle" fill="var(--muted)" transform="rotate(${-k.rot} ${q[0]} ${q[1]})" pointer-events="none">${k.nimi.replace(' (kevyt liikenne)','')}</text>`; } }
+  h+=`<polygon points="${pts(T.kortteli)}" fill="var(--ak)" fill-opacity="${bo?0.15:1}" data-bg="1"/>`;
+  if(layers.tonttijako) for(const k in T.tontit) h+=`<polygon points="${pts(T.tontit[k])}" fill="none" stroke="var(--ink)" stroke-width="${sw*.7}" stroke-dasharray="${sw*8} ${sw*3} ${sw*2} ${sw*3}" opacity=".5" pointer-events="none"/>`;
+  if(layers.rakennusala) h+=raLine(sw);
+  if(T.sisaanajo && T.sisaanajo.length) h+=`<polygon points="${pts(T.sisaanajo)}" fill="var(--park)" stroke="var(--muted)" stroke-width="${sw*.5}" pointer-events="none"/>`;
+  if(!WM.top) h+=wmsImgs('over');
+  const order={kansi:0,piha:1,ramppi:2,lamelli:3,piste:3};
+  const objs=[...S.objs].sort((a,b)=>order[a.tyyppi]-order[b.tyyppi]);
+  for(const o of objs){ const Q=rectPts(o), isSel=sel===o.id, b=R.bad.has(o.id);
+    const st = isSel ? `stroke="var(--sel)" stroke-width="${sw*2.4}"` : b ? `stroke="var(--bad)" stroke-width="${sw*2}"` : '';
+    if(o.tyyppi==='kansi') h+=`<polygon points="${pts(Q)}" fill="var(--kansi)" fill-opacity=".14" ${st||`stroke="var(--kansi)" stroke-width="${sw*1.4}"`} stroke-dasharray="${sw*8} ${sw*3}" data-id="${o.id}"/>`;
+    else if(o.tyyppi==='piha'){ h+=`<polygon points="${pts(Q)}" fill="var(--park)" ${st||`stroke="var(--muted)" stroke-width="${sw*.6}"`} data-id="${o.id}"/>`; h+=stalls(o,sw); }
+    else if(o.tyyppi==='ramppi') h+=`<polygon points="${pts(Q)}" fill="var(--ramp)" opacity=".85" ${st} data-id="${o.id}"/>`;
+    else { h+=`<polygon points="${pts(Q)}" fill="${o.tyyppi==='piste'?'var(--piste)':'var(--mass)'}" opacity=".9" ${st||`stroke="var(--mass-ink)" stroke-width="${sw*.6}"`} data-id="${o.id}"/>`;
+      if(o.ylin<0.999) h+=`<polygon points="${pts(rectPts({...o,l:o.l*o.ylin}))}" fill="none" stroke="var(--mass-ink)" stroke-width="${sw*.8}" stroke-dasharray="${sw*2} ${sw*3}" pointer-events="none"/>`;
+      if(o.halli) h+=`<polygon points="${pts(rectPts({...o,d:Math.max(o.d,o.hlev||o.d)}))}" fill="none" stroke="var(--kansi)" stroke-width="${sw*1.6}" stroke-dasharray="${sw*8} ${sw*3}" pointer-events="none"/>`; }
+    // tekstit
+    const c=sv([o.cx,o.cy]); let ang=-(o.a+T.ang); ang=((ang+90)%180+180)%180-90;
+    const lab = isMass(o) ? `${o.id} ${ROM[o.krs]||o.krs}${o.ylin<0.999?'*':''} · ${rnd((R.kemM[o.id]||0)/10)*10}` : o.tyyppi==='piha' ? `p ${(o.d>=16?2:o.d>=11?1:0)*Math.floor(o.l/2.5)} ap` : o.tyyppi==='kansi' ? `kansi ${Math.floor(Math.max(0,area(Q)-R.masses.reduce((s,m)=>s+clipArea(rectPts(m),Q),0))/KANSI_M2)} ap` : `ramppi ${fi(o.l,0)} m`;
+    if(layers.mitat || isMass(o)) h+=`<text x="${c[0]}" y="${c[1]}" font-size="${sw*(isMass(o)?13:11)}" font-weight="${isMass(o)?700:600}" text-anchor="middle" dominant-baseline="middle" fill="${isMass(o)?'var(--mass-ink)':o.tyyppi==='kansi'?'var(--kansi)':'var(--ink)'}" transform="rotate(${ang} ${c[0]} ${c[1]})" pointer-events="none">${lab}</text>`;
+  }
+  if(WM.top) h+=wmsImgs('over');
+  h+=meluFacades(sw);
+  h+=`<polygon points="${pts(T.kortteli)}" fill="none" stroke="var(--ink)" stroke-width="${sw*2.2}" pointer-events="none"/>`;
+  // kahvat
+  const o=S.objs.find(x=>x.id===sel);
+  if(o){ const t=o.a*Math.PI/180, ux=[Math.cos(t),Math.sin(t)], uy=[-Math.sin(t),Math.cos(t)], r=sw*7;
+    const hp=(k,p,shape)=>{ const q=sv(p); return shape==='c' ? `<circle cx="${q[0]}" cy="${q[1]}" r="${r}" fill="var(--panel)" stroke="var(--sel)" stroke-width="${sw*2}" data-h="${k}" style="cursor:grab"/>` : `<rect x="${q[0]-r}" y="${q[1]-r}" width="${2*r}" height="${2*r}" fill="var(--panel)" stroke="var(--sel)" stroke-width="${sw*2}" data-h="${k}" style="cursor:move"/>`; };
+    if(!o.poly){ const L=o.l/2, Dd=o.d/2;
+      h+=hp('l+',[o.cx+ux[0]*L,o.cy+ux[1]*L]); h+=hp('l-',[o.cx-ux[0]*L,o.cy-ux[1]*L]);
+      h+=hp('d+',[o.cx+uy[0]*Dd,o.cy+uy[1]*Dd]); h+=hp('d-',[o.cx-uy[0]*Dd,o.cy-uy[1]*Dd]);
+      const rp=[o.cx+ux[0]*(L+6),o.cy+ux[1]*(L+6)], q1=sv([o.cx+ux[0]*L,o.cy+ux[1]*L]), q2=sv(rp);
+      h+=`<line x1="${q1[0]}" y1="${q1[1]}" x2="${q2[0]}" y2="${q2[1]}" stroke="var(--sel)" stroke-width="${sw*1.2}" pointer-events="none"/>`+hp('rot',rp,'c'); }
+    else { const P=rectPts(o), xs=P.map(p=>p[0]); const far=P[xs.indexOf(Math.max(...xs))]; h+=hp('rot',[far[0]+6,far[1]],'c'); } }
+  // pohjoisnuoli + mittajana (näkymän koordinaateissa)
+  const x0=VB[0]+VB[2]*0.05, y0=VB[1]+VB[3]*0.05, a=VB[2]*0.06;
+  h+=`<path d="M${x0} ${y0+a} L${x0} ${y0} M${x0-a*.2} ${y0+a*.28} L${x0} ${y0} L${x0+a*.2} ${y0+a*.28}" stroke="var(--ink)" stroke-width="${sw*1.6}" fill="none" pointer-events="none"/><text x="${x0}" y="${y0-a*.25}" font-size="${a*.4}" font-weight="700" text-anchor="middle" fill="var(--ink)" pointer-events="none">N</text>`;
+  const sbx=VB[0]+VB[2]*0.05, sby=VB[1]+VB[3]*0.95, L50=niceLen(VB[2]*0.25);
+  for(let i=0;i<5;i++) h+=`<rect x="${sbx+i*L50/5}" y="${sby}" width="${L50/5}" height="${sw*5}" fill="${i%2?'var(--panel)':'var(--ink)'}" stroke="var(--ink)" stroke-width="${sw*.6}" pointer-events="none"/>`;
+  h+=`<text x="${sbx+L50}" y="${sby-sw*4}" font-size="${sw*11}" text-anchor="middle" fill="var(--muted)" pointer-events="none">${L50} m</text><text x="${sbx}" y="${sby-sw*4}" font-size="${sw*11}" fill="var(--muted)" pointer-events="none">0</text>`;
+  svg.innerHTML=h;
+  show(R); meluPanel(); scheduleWms();
+}
+function niceLen(x){ const c=[5,10,20,25,50,100,200,500]; return c.reduce((b,v)=>Math.abs(v-x)<Math.abs(b-x)?v:b,c[0]); }
+let raCache=null;
+function raLine(sw){ // rakennusala: kortteliraja siirrettynä reunakohtaisesti sisään (likiarvo piirtoon)
+  const K=T.kortteli, n=K.length, lines=[];
+  for(let i=0;i<n;i++){ const a=K[i], b=K[(i+1)%n], dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy); let nx=-dy/L, ny=dx/L;
+    const m=[(a[0]+b[0])/2+nx*0.5,(a[1]+b[1])/2+ny*0.5]; if(!inside(m,K)){ nx=-nx; ny=-ny; }
+    const off=T.sb[T.reunat[i]]??4; lines.push([[a[0]+nx*off,a[1]+ny*off],[b[0]+nx*off,b[1]+ny*off]]); }
+  const P=[]; for(let i=0;i<n;i++){ const [p1,p2]=lines[(i-1+n)%n], [p3,p4]=lines[i];
+    const d=(p1[0]-p2[0])*(p3[1]-p4[1])-(p1[1]-p2[1])*(p3[0]-p4[0]);
+    if(Math.abs(d)<1e-6){ P.push(p3); continue; }
+    const t=((p1[0]-p3[0])*(p3[1]-p4[1])-(p1[1]-p3[1])*(p3[0]-p4[0]))/d; P.push([p1[0]+t*(p2[0]-p1[0]), p1[1]+t*(p2[1]-p1[1])]); }
+  return `<polygon points="${pts(P)}" fill="none" stroke="var(--ink)" stroke-width="${sw*.8}" stroke-dasharray="${sw*5} ${sw*3}" opacity=".7" pointer-events="none"/>`; }
+function stalls(o,sw){ const rows=o.d>=16?2:o.d>=11?1:0, n=Math.floor(o.l/2.5); if(!rows||n<1) return ''; let h='';
+  const t=o.a*Math.PI/180, ux=[Math.cos(t),Math.sin(t)], uy=[-Math.sin(t),Math.cos(t)];
+  const x0=-o.l/2+(o.l-n*2.5)/2, bands = rows===2 ? [-o.d/2, o.d/2-5] : [-o.d/2];
+  for(const yb of bands) for(let i=0;i<n;i++){ const cx=x0+i*2.5+1.25, cy=yb+2.5;
+    const C=[o.cx+ux[0]*cx+uy[0]*cy, o.cy+ux[1]*cx+uy[1]*cy]; h+=`<polygon points="${pts(rectPts({cx:C[0],cy:C[1],l:2.5,d:5,a:o.a}))}" fill="var(--stall)" stroke="var(--muted)" stroke-width="${sw*.4}" pointer-events="none"/>`; }
+  return h; }
+
+function show(R){
+  $('k-kem').textContent=fmt(R.kem); $('k-e').textContent=fi(R.e); $('k-as').textContent='≈ '+R.as;
+  $('k-ap').textContent=`${R.tarj} / ${R.tarve}`; $('k-piha').textContent=fmt(R.piha); $('k-pihas').textContent=`(kannella ${fmt(R.kansiAla)}, le-tarve ${fmt(R.le)})`; $('k-pp').textContent=fmt(R.pp);
+  $('k-pk').textContent = R.kem>0 ? fi(R.piha/R.kem) : '–'; $('k-pas').textContent = R.as>0 ? fmt(R.piha/R.as) : '–';
+  const C=[
+    ['Massat korttelissa ja rakennusalalla', R.rmin>=-1e-6, R.masses.length?'vara '+fi(R.rmin,1)+' m':'–'],
+    [`Rakennusväli ≥ ${fi(S.asetus.vali,1)} m`, R.masses.length<2 || R.vmin>=S.asetus.vali-1e-6, R.masses.length>1?'min '+fi(R.vmin,1)+' m':'–'],
+    ['Pysäköinti ei päällekkäin talojen kanssa', R.parkOk, ''],
+    ['Autopaikat riittävät', R.tarj>=R.tarve, `piha ${R.apPiha} + halli ${R.apHalli} + kansi ${R.apKansi}`],
+    ['Ramppi halliin / kannen alle (≥ 27 m)', R.rampOk, R.tarvRamp?(R.rampOk?'ok':'puuttuu tai liian lyhyt'):'ei tarvita'],
+    ['Piha ≥ le-tarve (10 m²/as)', R.piha>=R.le, `${fmt(R.piha)} / ${fmt(R.le)} m²`],
+    [`Kerrosluku ${ROM[S.asetus.kmin]}–${ROM[S.asetus.kmax]}, runkosyvyys`, R.kkOk && R.syvOk, 'lamelli 10–17, piste 16–24 m'],
+    ['Rakennusväli ≥ H (tavoite)', R.pairs.every(p=>p[2]>=p[3]), R.pairs.filter(p=>p[2]<p[3]).map(p=>`${p[0]}–${p[1]} ${p[2].toFixed(0)}/${p[3]}`).join(', ')||'kaikki'],
+  ];
+  $('checks').innerHTML=C.map(([a,ok,v])=>`<li><span class="${ok?'ok':'bad'}">${ok?'✔':'✘'}</span><span>${a}</span><em>${v}</em></li>`).join('');
+  objList(); selPanel(R); cmpTable(R);
+}
+function objList(){ $('objlist').innerHTML=S.objs.map(o=>`<button type="button" data-o="${o.id}" aria-pressed="${sel===o.id}"><b>${o.id} · ${TYYPIT[o.tyyppi]}</b><span>${isMass(o)?`${ROM[o.krs]}${o.ylin<0.999?'*':''} · ${fi(o.l,0)}×${fi(o.d,1)} m${o.halli?' · halli':''}`:o.poly?'oma muoto':`${fi(o.l,0)}×${fi(o.d,1)} m`}</span></button>`).join(''); }
+function selPanel(R){ const o=S.objs.find(x=>x.id===sel), el=$('sel');
+  if(!o){ if(!el.dataset.empty){ el.innerHTML='<p class="hint">Valitse kohde kartalta tai listasta. Raahaa siirtääksesi, pyöritä ympyräkahvasta, muuta kokoa neliökahvoista. Nuolinäppäimet siirtävät 0,5 m, Delete poistaa.</p>'; el.dataset.empty='1'; el.dataset.for=''; } return; }
+  if(el.dataset.for===o.id && document.activeElement && el.contains(document.activeElement)) { updVals(o,R); return; }
+  el.dataset.empty=''; el.dataset.for=o.id;
+  const f=(k,lab,step,min,max)=>`<label>${lab}<input type="number" data-f="${k}" step="${step}" ${min!=null?`min="${min}"`:''} ${max!=null?`max="${max}"`:''}></label>`;
+  let h=`<div class="fields"><label class="wide">Tunnus<input type="text" data-f="id"></label>`;
+  if(!o.poly) h+=f('l', o.tyyppi==='ramppi'?'Pituus m':'Pituus m',0.5,2,300)+f('d','Syvyys / leveys m',0.5,2,200);
+  h+=f('a','Kulma °',1,-360,360);
+  if(isMass(o)) h+=f('krs','Kerrosluku',1,1,16)+f('ylin','Ylin kerros (0,5–1)',0.05,0.5,1)+`<label class="chk wide"><input type="checkbox" data-f="halli"> Autohalli talon alla (30 m²/ap)</label>`+f('hlev','Hallin leveys m',0.5,0,40);
+  if(o.tyyppi==='piha') h+=`<p class="hint wide" style="grid-column:1/-1">Syvyys 16 m = kaksi ruuturiviä ajoväylän molemmin puolin, 11 m = yksi rivi.</p>`;
+  const canFit = o.tyyppi==='piha' || (o.tyyppi==='kansi' && !o.poly);
+  h+=`</div>${canFit?`<div class="row" style="margin-top:8px"><button type="button" class="pri" id="fitpark">Sovita tarpeeseen</button><span class="hint" style="margin:0">Mitoittaa ${o.tyyppi==='piha'?'kentän pituuden':'kannen pituuden'} valitun normin ja nykyisen kerrosalan mukaan.</span></div>`:''}<div class="row" style="margin-top:8px"><button type="button" id="align">Kohdista reunaan</button><button type="button" id="dup">Monista</button><button type="button" class="del" id="delobj">Poista</button></div><p class="hint" id="selinfo"></p>`;
+  el.innerHTML=h; updVals(o,R);
+  el.querySelectorAll('[data-f]').forEach(inp=>inp.addEventListener('change',e=>{ const k=e.target.dataset.f; snap();
+    if(k==='halli'){ o.halli=e.target.checked; if(o.halli && !o.hlev) o.hlev=Math.max(16,o.d); } else if(k==='id'){ const v=e.target.value.trim(); if(v && !S.objs.some(x=>x!==o&&x.id===v)){ o.id=v; sel=v; } }
+    else { let v=parseFloat(e.target.value.replace(',','.')); if(isNaN(v)) return; if(k==='krs') v=Math.max(1,Math.round(v)); if(k==='ylin') v=Math.min(1,Math.max(0.5,v)); if(k==='l'||k==='d') v=Math.max(1,v); o[k]=v; }
+    render(); }));
+  $('align').onclick=()=>{ snap(); o.a=nearestEdgeAngle(o); render(); };
+  $('dup').onclick=()=>{ snap(); const c=JSON.parse(JSON.stringify(o)); c.id=newId(o.tyyppi); c.cx+=5; c.cy-=5; S.objs.push(c); sel=c.id; render(); };
+  $('delobj').onclick=()=>delSel();
+  if($('fitpark')) $('fitpark').onclick=()=>fitParking(o); }
+function capOf(o, R){ if(o.tyyppi==='piha'){ const rows=o.d>=16?2:o.d>=11?1:0; return rows*Math.floor(o.l/2.5); }
+  if(o.tyyppi==='kansi'){ const Q=rectPts(o); let a=area(Q); for(const m of R.masses) a-=clipArea(rectPts(m),Q); return Math.floor(Math.max(0,a)/KANSI_M2); } return 0; }
+function fitParking(o){ const R=calc(); const muu=R.tarj-capOf(o,R); const need=Math.max(0,R.tarve-muu); snap();
+  const keepEnd = o.l/2;   // pidetään kentän alkupää paikallaan: siirretään keskipistettä
+  const t=o.a*Math.PI/180, ux=[Math.cos(t),Math.sin(t)], start=[o.cx-ux[0]*keepEnd, o.cy-ux[1]*keepEnd];
+  let nl;
+  if(o.tyyppi==='piha'){ if(o.d<11) o.d=16; const rows=o.d>=16?2:1; nl=Math.max(2.5, Math.ceil(need/rows)*2.5); }
+  else { let lo=1, hi=400; for(let i=0;i<40;i++){ const mid=(lo+hi)/2; const c=capOf({...o,l:mid,cx:start[0]+ux[0]*mid/2,cy:start[1]+ux[1]*mid/2},R); if(c>=need) hi=mid; else lo=mid; } nl=Math.ceil(hi*2)/2; }
+  o.l=nl; o.cx=start[0]+ux[0]*nl/2; o.cy=start[1]+ux[1]*nl/2;
+  const R2_=calc(); render();
+  toast(need===0 ? 'Muut pysäköintiratkaisut kattavat jo tarpeen – kenttä pienennettiin minimiin' : `${TYYPIT[o.tyyppi]} mitoitettu: ${capOf(o,R2_)} ap (tarve ${R2_.tarve}, muualla ${muu})`); }
+function updVals(o,R){ const el=$('sel'); el.querySelectorAll('[data-f]').forEach(inp=>{ if(inp===document.activeElement) return; const k=inp.dataset.f;
+  if(k==='halli') inp.checked=!!o.halli; else if(k==='id') inp.value=o.id; else if(k==='hlev'){ inp.value=o.hlev||''; inp.disabled=!o.halli; } else inp.value = k==='a' ? Math.round(o[k]) : Math.round(o[k]*100)/100; });
+  const si=$('selinfo'); if(!si) return;
+  if(isMass(o)) si.textContent=`Pohja-ala ${fmt(o.l*o.d)} m², kerrosala ${fmt(R.kemM[o.id]||0)} k-m², korkeus ${o.krs*3} m.`;
+  else if(o.tyyppi==='piha') si.textContent=`${(o.d>=16?2:o.d>=11?1:0)*Math.floor(o.l/2.5)} autopaikkaa, ala ${fmt(o.l*o.d)} m².`;
+  else if(o.tyyppi==='kansi') si.textContent=`Kannen ala ${fmt(area(rectPts(o)))} m² (talojen alle jäävä osa vähennetään kapasiteetista).`;
+  else si.textContent=`Ramppi ${fi(o.l,1)} m, vaatimus vähintään ${RAMP_MIN} m (3,0 m / 1:7 + 2 × 3 m, katettu).`; }
+function nearestEdgeAngle(o){ const K=T.kortteli; let best=o.a, bd=1e9;
+  for(let i=0;i<K.length;i++){ const a=K[i], b=K[(i+1)%K.length]; const ang=Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI;
+    for(const k of [0,90,180,270]){ let c=((ang+k+540)%360)-180; let d=Math.abs((((c-o.a)%180)+270)%180-90); if(d<bd){bd=d; best=c;} } }
+  let r=best; while(r-o.a>90) r-=180; while(o.a-r>90) r+=180; return Math.round(r*10)/10; }
+
+function cmpTable(R){ const rows=[]; const P=T.pohjat;
+  for(const k in P){ const st=P[k]._r; if(st) rows.push([P[k].nimi, st]); }
+  const cur=[ 'Nyt', {kem:R.kem,e:R.e,as:R.as,ap:`${R.tarj}/${R.tarve}`,piha:R.piha} ];
+  $('cmp').innerHTML=`<tr><th>Suunnitelma</th><th>k-m²</th><th>e</th><th>as.</th><th>ap</th><th>piha m²</th></tr>`+
+    [...rows,cur].map(([n,s])=>`<tr><td>${n}</td><td>${fmt(s.kem)}</td><td>${fi(s.e)}</td><td>${s.as}</td><td>${s.ap}</td><td>${fmt(s.piha)}</td></tr>`).join(''); }
+
+// ---------- vuorovaikutus ----------
+function snap(){ hist.push(JSON.stringify(S)); if(hist.length>60) hist.shift(); markDirty(); }
+function undo(){ const s=hist.pop(); if(!s) return; markDirty(); S=JSON.parse(s); if(!S.objs.some(o=>o.id===sel)) sel=null; syncNormi(); render(); }
+function newId(t){ const pre={lamelli:'R',piste:'R',piha:'P',kansi:'K',ramppi:'RP'}[t]; let i=1; while(S.objs.some(o=>o.id===pre+i)) i++; return pre+i; }
+function viewCenter(){ return IR([VB[0]+VB[2]/2, -(VB[1]+VB[3]/2)]); }
+function add(t){ snap(); const c=viewCenter(), a=nearestEdgeAngle({a:0});
+  const base={lamelli:{l:50,d:14,krs:5,ylin:1,halli:false}, piste:{l:20,d:20,krs:5,ylin:1,halli:false}, piha:{l:40,d:16}, kansi:{l:40,d:30}, ramppi:{l:27,d:6}}[t];
+  const o={id:newId(t), tyyppi:t, cx:c[0], cy:c[1], a, ...base}; S.objs.push(o); sel=o.id; render(); }
+function delSel(){ if(!sel) return; snap(); S.objs=S.objs.filter(o=>o.id!==sel); sel=null; render(); }
+
+let drag=null;
+$('plan').addEventListener('pointerdown',ev=>{ const tgt=ev.target, svg=$('plan'); const p=evLocal(ev);
+  if(tgt.dataset.h){ const o=S.objs.find(x=>x.id===sel); snap(); drag={k:'h',h:tgt.dataset.h,o,start:p,orig:{...o}}; }
+  else if(tgt.dataset.id){ sel=tgt.dataset.id; const o=S.objs.find(x=>x.id===sel); snap(); drag={k:'move',o,start:p,orig:{cx:o.cx,cy:o.cy},moved:false}; render(); }
+  else { drag={k:'pan',sx:ev.clientX,sy:ev.clientY,vb:[...VB],moved:false}; }
+  svg.setPointerCapture(ev.pointerId); svg.classList.add('dragging'); });
+$('plan').addEventListener('pointermove',ev=>{ if(!drag) return; const svg=$('plan');
+  if(drag.k==='pan'){ const r=svg.getBoundingClientRect(), s=VB[2]/r.width; VB[0]=drag.vb[0]-(ev.clientX-drag.sx)*s; VB[1]=drag.vb[1]-(ev.clientY-drag.sy)*s; if(Math.abs(ev.clientX-drag.sx)+Math.abs(ev.clientY-drag.sy)>3) drag.moved=true; applyVB(); render(); return; }
+  const p=evLocal(ev), o=drag.o;
+  if(drag.k==='move'){ o.cx=drag.orig.cx+p[0]-drag.start[0]; o.cy=drag.orig.cy+p[1]-drag.start[1]; drag.moved=true; render(); return; }
+  const g=drag.orig, t=g.a*Math.PI/180, ux=[Math.cos(t),Math.sin(t)], uy=[-Math.sin(t),Math.cos(t)];
+  if(drag.h==='rot'){ let a=Math.atan2(p[1]-g.cy, p[0]-g.cx)*180/Math.PI; if(g.poly) a=a; if(ev.shiftKey) a=Math.round(a/15)*15; else a=Math.round(a); o.a=a; render(); return; }
+  const ax = drag.h[0]==='l' ? ux : uy, sgn = drag.h[1]==='+' ? 1 : -1, key = drag.h[0]==='l' ? 'l' : 'd';
+  const proj=(p[0]-g.cx)*ax[0]+(p[1]-g.cy)*ax[1];           // etäisyys keskeltä akselilla
+  let nl = Math.max(2, Math.round((sgn*proj + g[key]/2)*2)/2);  // vastakkainen reuna pysyy paikallaan, 0,5 m portaat
+  const shift=(nl-g[key])/2*sgn; o[key]=nl; o.cx=g.cx+ax[0]*shift; o.cy=g.cy+ax[1]*shift; render(); });
+function endDrag(ev){ if(!drag) return; const svg=$('plan'); svg.classList.remove('dragging');
+  if(drag.k==='pan' && !drag.moved){ sel=null; render(); }
+  if(drag.k==='move' && !drag.moved) hist.pop();
+  drag=null; }
+$('plan').addEventListener('pointerup',endDrag); $('plan').addEventListener('pointercancel',endDrag);
+$('plan').addEventListener('wheel',ev=>{ ev.preventDefault(); const svg=$('plan'), r=svg.getBoundingClientRect();
+  const fx=(ev.clientX-r.left)/r.width, fy=(ev.clientY-r.top)/r.height, k=ev.deltaY>0?1.12:1/1.12;
+  const w=Math.min(1200,Math.max(30,VB[2]*k)); VB=[VB[0]+(VB[2]-w)*fx, VB[1]+(VB[3]-w)*fy, w, w]; applyVB(); render(); },{passive:false});
+document.addEventListener('keydown',ev=>{ const tag=(document.activeElement||{}).tagName; if(tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA') return;
+  if((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='z'){ ev.preventDefault(); undo(); return; }
+  const o=S&&S.objs.find(x=>x.id===sel); if(!o) return;
+  if(ev.key==='Delete'||ev.key==='Backspace'){ ev.preventDefault(); delSel(); return; }
+  const mv={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,1],ArrowDown:[0,-1]}[ev.key];
+  if(mv){ ev.preventDefault(); snap(); const d=IR([mv[0]*0.5, mv[1]*0.5]); o.cx+=d[0]; o.cy+=d[1]; render(); } });
+$('objlist').addEventListener('click',ev=>{ const b=ev.target.closest('[data-o]'); if(!b) return; sel=b.dataset.o; render(); });
+for(const t of ['lamelli','piste','piha','kansi','ramppi']) $('add-'+t).onclick=()=>add(t);
+$('undo').onclick=undo; $('fit').onclick=()=>{ fitView(); render(); };
+
+// normi
+function syncNormi(){ const n=S.normi, a=S.asetus; $('n-preset').value=n.preset||'oma'; $('n-normi').value=n.normi; $('n-kev').value=n.kev; $('n-apmin').value=n.apmin;
+  $('n-koko').value=n.koko; $('n-hak').value=n.hak; $('n-vali').value=a.vali; $('n-kmin').value=a.kmin; $('n-kmax').value=a.kmax;
+  const custom=(n.preset||'oma')==='oma'; for(const id of ['n-normi','n-kev','n-apmin']) $(id).disabled=!custom; }
+$('n-preset').addEventListener('change',e=>{ snap(); const p=PRESETS[e.target.value]; S.normi.preset=e.target.value; if(p) Object.assign(S.normi,p); syncNormi(); render(); });
+for(const [id,k,grp] of [['n-normi','normi','normi'],['n-kev','kev','normi'],['n-apmin','apmin','normi'],['n-koko','koko','normi'],['n-hak','hak','normi'],['n-vali','vali','asetus'],['n-kmin','kmin','asetus'],['n-kmax','kmax','asetus']])
+  $(id).addEventListener('change',e=>{ const v=parseFloat(String(e.target.value).replace(',','.')); if(isNaN(v)) return; snap(); S[grp][k]=v; render(); });
+
+// tasot
+function layerUI(){ const L={naapurit:'Naapurit ja rakennukset', rakennusala:'Rakennusala', tonttijako:'Nykyinen tonttijako', mitat:'Pysäköinnin tekstit'};
+  $('layers').innerHTML=Object.entries(L).map(([k,v])=>`<label style="display:flex;gap:5px;align-items:center;font-size:13px;margin-right:10px"><input type="checkbox" data-l="${k}" ${layers[k]?'checked':''}>${v}</label>`).join('');
+  $('layers').querySelectorAll('[data-l]').forEach(c=>c.addEventListener('change',e=>{ layers[e.target.dataset.l]=e.target.checked; render(); })); }
+
+// ---------- tontit ja pohjat ----------
+function pohjaState(p){ const n=p.normi||{}; const preset = n.kev>0 ? 'ak-kev' : (n.normi===110 && n.apmin===0.5 ? 'ak' : 'oma');
+  return {objs:JSON.parse(JSON.stringify(p.objektit)).map(o=>({ylin:1,krs:1,halli:false,...o})),
+    normi:{preset, normi:n.normi??110, kev:Math.round((n.kevennys??0)*100), apmin:n.apmin??0.5, koko:55, hak:0.78},
+    asetus:{vali:8,kmin:4,kmax:8}}; }
+function setTontti(k){ T=DATA.tontit[k]; $('sub').textContent=`${T.nimi}, ${T.kunta} · ${T.tunnus} · korttelin ala ${fmt(T.A)} m²`;
+  $('kaava').innerHTML=esc(T.kaava||'')+(T.kaavaPdf?` <a href="${esc(T.kaavaPdf)}" target="_blank" rel="noopener">Kaavamääräykset (PDF)</a>`:''); $('src').textContent=T.lahde||''; wmsUI();
+  $('pohja').innerHTML='<option value="">Tyhjä tontti</option>'+Object.entries(T.pohjat).map(([pk,p])=>`<option value="${pk}">${p.nimi}</option>`).join('');
+  // lasketaan pohjien tunnusluvut vertailuun
+  for(const pk in T.pohjat){ const keep=S; S=pohjaState(T.pohjat[pk]); const R=calc(); T.pohjat[pk]._r={kem:R.kem,e:R.e,as:R.as,ap:`${R.tarj}/${R.tarve}`,piha:R.piha}; S=keep; }
+  const first=Object.keys(T.pohjat)[0]; loadPohja(first||''); $('pohja').value=first||''; fitView(); render(); subscribePlans(); }
+function loadPohja(pk){ hist=[]; sel=null; CUR=null; dirty=false; savedAt=null; S = pk ? pohjaState(T.pohjat[pk]) : {objs:[], normi:{preset:'ak',normi:110,kev:0,apmin:0.5,koko:55,hak:0.78}, asetus:{vali:8,kmin:4,kmax:8}}; $('plan-name').value=pk?T.pohjat[pk].nimi.replace(/^.*?– /,''):''; syncNormi(); setStatus(); renderPlans(); }
+$('lataa-pohja').onclick=()=>{ if(S && S.objs.length) snap(); const k=$('pohja').value; const h=hist; loadPohja(k); hist=h; render(); };
+let prevTontti=null; $('tontti').addEventListener('focus',e=>prevTontti=e.target.value);
+$('tontti').addEventListener('change',e=>{ if(dirty && !confirm('Luonnoksessa on tallentamattomia muutoksia. Vaihdetaanko silti alue?')){ e.target.value=prevTontti; return; } setTontti(e.target.value); remember(); });
+
+// ---------- tallennus (db) ----------
+let unsub=null, plans=[];
+function subscribePlans(){ if(unsub){ unsub(); unsub=null; } plans=[]; renderPlans(); if(!db) return;
+  const key=$('tontti').value; let done=false; const timer=setTimeout(()=>{ if(!done){ $('plans-hint').textContent='Tallennettuja suunnitelmia ei saatu ladattua juuri nyt.'; } },10000);
+  unsub=db.collection('suunnitelmat').where('tontti','==',key).onSnapshot(snap=>{ done=true; clearTimeout(timer);
+    plans=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.muokattu).localeCompare(String(a.muokattu))); renderPlans(); },
+    err=>{ done=true; clearTimeout(timer); $('plans-hint').textContent='Tallennus ei ole käytettävissä tässä näkymässä.'; }); }
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// ---------- vienti ----------
+async function save(filename, data){ if(!dl){ toast('Lataus ei ole käytettävissä tässä näkymässä'); return; } try{ const r=await dl.save({filename,data}); if(r.status==='saved') toast('Tiedosto tallennettu'); }catch(e){ if(e.code!=='cancelled') toast('Lataus ei onnistunut'); } }
+$('export-json').onclick=()=>{ const R=calc(); save(`${($('plan-name').value||'luonnos').replace(/[^\wåäöÅÄÖ-]+/g,'_')}.json`, JSON.stringify({tontti:$('tontti').value, tonttidata:T.oma?T:undefined, origo:T.origo, kulma:T.ang, koordinaatit:'paikallinen kehys (m), origo EPSG:3879', tila:S, tulos:{kem:Math.round(R.kem),e:R.e,asunnot:R.as,ap_tarve:R.tarve,ap_tarjonta:R.tarj,piha:Math.round(R.piha)}},null,1)); };
+$('export-svg').onclick=()=>{ const svg=$('plan').cloneNode(true); svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
+  const cs=getComputedStyle(document.documentElement); let s=new XMLSerializer().serializeToString(svg).replace(/var\(--([a-z-]+)\)/g,(m,v)=>cs.getPropertyValue('--'+v).trim()||'#888');
+  save(`${($('plan-name').value||'luonnos').replace(/[^\wåäöÅÄÖ-]+/g,'_')}.svg`, s); };
+
+// ================= Kaupunkien karttapalvelut (WMS/WFS) editorin taustalle: Espoo, Helsinki, Vantaa =================
+// Kaupunki päätetään ennen hakuja (osoitehaku, kiinteistötunnuksen kuntanumero tai alueen T.kunta),
+// ja kaikki karttakuvat ja WFS-haut tehdään vain sen kaupungin palvelusta. Koordinaatisto on kaikissa EPSG:3879.
+const MELU_ESPOO=[['#00ff00',45],['#00aa00',50],['#ffff7f',55],['#ffaa7f',60],['#ffaa00',65],['#ff0000',70],['#aa00ff',75]];   // pikseleistä tulkittu, TARKISTA
+const MELU_HKI=[['#ccff63',40],['#9bff00',45],['#009b00',50],['#ffff00',55],['#ffd763',60],['#ff9b00',65],['#ff0000',70],['#9900ff',75]];   // Helsingin GeoServerin selitteestä
+const pvm=s=>{ s=String(s||''); if(/T\d/.test(s)){ const d=new Date(s); if(!isNaN(d)) return d.toLocaleDateString('fi-FI'); } const m=s.match(/^(\d{4})-(\d\d)-(\d\d)$/); return m?`${+m[3]}.${+m[2]}.${m[1]}`:s; };
+const CITY={
+  Espoo:{num:'49', gen:'Espoon', wms:'https://kartat.espoo.fi/teklaogcweb/wms.ashx', wfs:'https://kartat.espoo.fi/teklaogcweb/wfs.ashx',
+    lahde:'© Espoon kaupunki, paikkatieto (CC BY 4.0)',
+    base:{orto:'Ortokartta', kanta:'Karsittu_kantakartta', kiint:'PKSkiinteistokartta', opas:'Opaskartta'},
+    over:[
+      {id:'ak', n:'Ajantasa_asemakaava_vektori', t:'Asemakaava, värillinen', op:.6},
+      {id:'akm',n:'Ajantasa_asemakaava_vektori_musta', t:'Asemakaava, musta', op:.8},
+      {id:'akv',n:'AsemakaavatVireillaOlevat', t:'Vireillä olevat asemakaavat', op:.8},
+      {id:'mk', n:'Maankayttokartta', t:'Maankäyttökartta', op:.6},
+      {id:'yk', n:'Yleis_ja_osayleiskaavojen_yhdistelma', t:'Yleiskaava (yhdistelmä)', op:.6, hidas:true},
+      {id:'mtd',n:'Espoo_tieliikenne Lden_NPM (kadut ja maantiet)', t:'Melu: tieliikenne Lden', op:.55, melu:true},
+      {id:'mrd',n:'Espoo_rautatieliikenne Lden_NPM (juna)', t:'Melu: raideliikenne Lden', op:.55, melu:true},
+      {id:'mtn',n:'Espoo_tieliikenne Ln_NPM (kadut ja maantiet)', t:'Melu: tieliikenne Ln (yö, selite TARKISTA)', op:.55},
+      {id:'kr', n:'Kiinteistotiedot', t:'Kiinteistörajat (rekisteri)', op:1},
+      {id:'mo', n:'Kaupungin_maanomistus', t:'Kaupungin maanomistus', op:.5}],
+    melu:MELU_ESPOO, meluTxt:'Espoon meluselvitys 2022 (NPM), värirajat tulkittu kuvasta – TARKISTA',
+    kiint:{type:'GIS:Kiinteistot_karsittu', id:'Kiinteistotunnus', ala:'Karttapinta-ala', laji:'Rekisteriyksikkolaji'},
+    kaava:{type:'GIS:Asemakaavat', teksti:p=>`Voimassa oleva asemakaava ${p.KAAVATUNNUS||''} ${p.KAAVANNIMI||''} (${p.KAAVATILANNE||''} ${p.VIIMEINENVAIHEPVM||''}).`, pdf:p=>p.KAAVAMAARAYS, pvm:p=>'', id:p=>p.KAAVATUNNUS}},
+  Helsinki:{num:'91', gen:'Helsingin', wms:'https://kartta.hel.fi/ws/geoserver/avoindata/wms', wfs:'https://kartta.hel.fi/ws/geoserver/avoindata/wfs',
+    lahde:'© Helsingin kaupunki, kaupunkiympäristön toimiala (CC BY 4.0)',
+    base:{orto:'avoindata:Ortoilmakuva', kanta:'avoindata:Kantakartta_harmaa', kiint:'avoindata:Kiinteistokartta', opas:'avoindata:Opaskartta_Helsinki'},
+    over:[
+      {id:'ak', n:'avoindata:Ajantasa_asemakaava', t:'Asemakaava (ajantasa)', op:.6},
+      {id:'akp',n:'avoindata:Ajantasa_asemakaava_maanpaallinen_varillinen', t:'Asemakaava, maanpäällinen värillinen', op:.6},
+      {id:'akv',n:'avoindata:Kaavahakemisto_alue_kaava_vireilla', t:'Vireillä olevat asemakaavat', op:.8},
+      {id:'yk', n:'avoindata:Yleiskaava_2016', t:'Yleiskaava 2016', op:.6},
+      {id:'mtd',n:'avoindata:Meluselvitys_2022_Helsinki_kadut_ja_maantiet_Lden', t:'Melu: kadut ja maantiet Lden', op:.55, melu:true},
+      {id:'mrd',n:'avoindata:Meluselvitys_2022_Helsinki_rautatiet_Lden', t:'Melu: rautatiet Lden', op:.55, melu:true},
+      {id:'mra',n:'avoindata:Meluselvitys_2022_Helsinki_raitiotie_Lden', t:'Melu: raitiotie Lden', op:.55, melu:true},
+      {id:'mme',n:'avoindata:Meluselvitys_2022_Helsinki_metro_Lden', t:'Melu: metro Lden', op:.55, melu:true},
+      {id:'mtn',n:'avoindata:Meluselvitys_2022_Helsinki_kadut_ja_maantiet_Ln', t:'Melu: kadut ja maantiet Ln (yö)', op:.55},
+      {id:'kr', n:'avoindata:Kiinteistot', t:'Kiinteistörajat (rekisteri)', op:1}],
+    melu:MELU_HKI, meluTxt:'Helsingin meluselvitys 2022 (EU-direktiivi), värit kaupungin selitteestä',
+    kiint:{type:'avoindata:Kiinteisto_alue', id:'kiinteisto', ala:'', laji:''},
+    kaava:{type:'avoindata:Kaavahakemisto_alue_kaava_voimassa', teksti:p=>`Voimassa oleva asemakaava nro ${p.kaavatunnus||''} (voimaan ${pvm(p.voimaantulopvm||p.lainvoimaisuuspvm)}).`, pdf:p=>'', pvm:p=>p.voimaantulopvm||p.lainvoimaisuuspvm||'', id:p=>p.kaavatunnus}},
+  Vantaa:{num:'92', gen:'Vantaan', wms:'https://gis.vantaa.fi/geoserver/wms', wfs:'https://gis.vantaa.fi/geoserver/wfs',
+    lahde:'© Vantaan kaupunki, paikkatieto (CC BY 4.0)',
+    base:{orto:'taustakartta:ortoilmakuva', kanta:'taustakartta:kaupunkikartta_mv', kiint:'kiinteisto:PKS_kiinteistokartta', opas:'taustakartta:kaupunkikartta'},
+    over:[
+      {id:'ak', n:'kaava:asemakaava_varipinta', t:'Asemakaava, värillinen', op:.6},
+      {id:'akm',n:'kaava:asemakaava_mv', t:'Asemakaava, mustavalkoinen', op:.8},
+      {id:'akv',n:'kaava:asemakaavat_vireilla', t:'Vireillä olevat asemakaavat', op:.8},
+      {id:'yk', n:'kaava:Yleiskaavayhdistelma_11012023', t:'Yleiskaava (yhdistelmä 11.1.2023)', op:.6},
+      {id:'kr', n:'kiinteisto:kiinteisto', t:'Kiinteistörajat (rekisteri)', op:1}],
+    melu:null, meluTxt:'Vantaan avoimessa karttapalvelussa (gis.vantaa.fi) ei ole meluselvityksen tasoja.',
+    kiint:{type:'kiinteisto:kiinteisto', id:'tunnus', ala:'', laji:'tyyppi'},
+    kaava:{type:'kaava:asemakaavahakemisto', teksti:p=>`Voimassa oleva asemakaava ${p.kaavan_nimi||p.kaavanro||''} (voimaan ${pvm(p.voimaantulopvm)}).`, pdf:p=>p.linkki, pvm:p=>p.voimaantulopvm||'', id:p=>p.kaavanro}}
+};
+const KUNTANRO={'49':'Espoo','91':'Helsinki','92':'Vantaa','235':'Kauniainen'};
+const WBASE=[['','Ei taustakuvaa'],['orto','Ilmakuva (uusin)'],['kanta','Kantakartta (harmaa)'],['kiint','Kiinteistökartta'],['opas','Opaskartta']];
+const WM={base:'', baseOp:1, on:{}, op:{}, top:false, julk:true, img:{}, st:{}};
+const cityOf=k=>CITY[k||(T&&T.kunta)]||null;
+const cityOn=()=>T && CITY[T.kunta] && T.origo;
+const wover=()=>cityOn()?CITY[T.kunta].over:[];
+const opOf=l=>WM.op[l.id]??l.op;
+const baseName=(k,id=WM.base)=>{ const c=cityOf(k); return c&&id?c.base[id]||'':''; };
+const pal=()=>(cityOf()&&cityOf().melu)||[];
+const hexRgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+const hasBase=()=>cityOn() && WM.base && WM.img[baseName()];
+function svgPx(){ return Math.max(300, $('plan').clientWidth||600); }
+function wantExt(){ return [VB[0]-VB[2]/2, VB[1]-VB[3]/2, VB[2]*2, VB[3]*2]; }
+function needFetch(c){ if(!c || c.tontti!==T.nimi) return true; const [x,y,w,h]=c.ext;
+  if(VB[0]<x||VB[1]<y||VB[0]+VB[2]>x+w||VB[1]+VB[3]>y+h) return true;
+  const r=VB[2]/svgPx(); return r<c.mpp/1.7 || r>c.mpp*2.5; }
+function activeNames(){ const a=[]; if(WM.base) a.push(baseName()); for(const l of wover()) if(WM.on[l.id]) a.push(l.n); return a.filter(Boolean); }
+let wTimer=null; function scheduleWms(){ clearTimeout(wTimer); wTimer=setTimeout(updateWms,350); }
+function updateWms(){ if(!cityOn()) return; for(const l of meluOn()){ const A=MA[l.n]; if(!A || (A.tontti!==T.nimi && !A.loading)) fetchAnalysis(l); }
+  for(const n of activeNames()){ const c=WM.img[n]; if(c&&c.loading) continue; if(needFetch(c)) fetchImg(n); } }
+function setSt(n,t,bad){ WM.st[n]={t,bad}; const el=document.querySelector(`[data-wst="${CSS.escape(n)}"]`); if(el){ el.textContent=t; el.className='wst'+(bad?' bad':''); } }
+function wmsUrl(n,E0,N0,E1,N1,W,H,k){ const c=cityOf(k); return `${c.wms}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=${encodeURIComponent(n)}&STYLES=&SRS=EPSG:3879&BBOX=${E0.toFixed(2)},${N0.toFixed(2)},${E1.toFixed(2)},${N1.toFixed(2)}&WIDTH=${W}&HEIGHT=${H}&FORMAT=image/png&TRANSPARENT=TRUE`; }
+async function getPng(url,ms){ const ac=new AbortController(), to=setTimeout(()=>ac.abort(),ms);
+  try{ const r=await fetch(url,{signal:ac.signal}); const ct=r.headers.get('content-type')||''; if(!r.ok||!/image/.test(ct)) throw new Error('palvelin palautti virheen'); return await r.blob(); }
+  catch(e){ throw new Error(e.name==='AbortError'?'Karttapalvelu ei vastannut ajoissa':e.message); } finally{ clearTimeout(to); } }
+async function fetchImg(n){ const ext=wantExt(), dpr=Math.min(2,window.devicePixelRatio||1), W=Math.min(2048,Math.round(svgPx()*2*dpr)), H=Math.round(W*ext[3]/ext[2]);
+  const o=T.origo, E0=o[0]+ext[0], E1=o[0]+ext[0]+ext[2], N1=o[1]-ext[1], N0=o[1]-(ext[1]+ext[3]);
+  const prev=WM.img[n]; WM.img[n]={...(prev||{}), loading:true}; setSt(n,'Ladataan…');
+  try{ const b=await getPng(wmsUrl(n,E0,N0,E1,N1,W,H), 25000); if(prev&&prev.url) URL.revokeObjectURL(prev.url);
+    WM.img[n]={url:URL.createObjectURL(b), ext, mpp:ext[2]/(W/dpr), tontti:T.nimi, loading:false}; setSt(n,''); render(); }
+  catch(e){ WM.img[n]={...(prev||{}), loading:false, fail:Date.now()}; if(prev&&prev.tontti!==T.nimi) delete WM.img[n]; setSt(n,e.message+(wover().find(l=>l.n===n)?.hidas?' – yleiskaavan palvelu on ollut hidas':''),true); } }
+function imgTag(n,op){ const c=WM.img[n]; if(!n||!c||!c.url||c.tontti!==T.nimi) return ''; const [x,y,w,h]=c.ext;
+  return `<image href="${c.url}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="none" opacity="${op}" pointer-events="none" data-bg="1"/>`; }
+function wmsImgs(kind){ if(!cityOn()) return ''; if(kind==='base') return WM.base?imgTag(baseName(),WM.baseOp):'';
+  return wover().filter(l=>WM.on[l.id]).map(l=>imgTag(l.n,opOf(l))).join(''); }
+
+// ---------- melu: julkisivut ja piha ----------
+const MA={};   // analyysikuvat: n -> {data,W,H,E0,N1,res,tontti}
+function meluOn(){ return wover().filter(l=>l.melu && WM.on[l.id]); }
+async function fetchAnalysis(l){ if(MA[l.n] && (MA[l.n].tontti===T.nimi || MA[l.n].loading)) return;
+  MA[l.n]={loading:true};
+  const xs=[],ys=[]; for(const p of T.kortteli){ const r=R2(p); xs.push(T.origo[0]+r[0]); ys.push(T.origo[1]+r[1]); }
+  const E0=Math.min(...xs)-40, E1=Math.max(...xs)+40, N0=Math.min(...ys)-40, N1=Math.max(...ys)+40, span=Math.max(E1-E0,N1-N0), res=Math.max(0.5,span/2048);
+  const W=Math.round((E1-E0)/res), H=Math.round((N1-N0)/res);
+  try{ const b=await getPng(wmsUrl(l.n,E0,N1-H*res,E0+W*res,N1,W,H),25000);
+    const bm=await createImageBitmap(b); const cv=document.createElement('canvas'); cv.width=W; cv.height=H; const cx=cv.getContext('2d',{willReadFrequently:true}); cx.drawImage(bm,0,0);
+    MA[l.n]={data:cx.getImageData(0,0,W,H).data,W,H,E0,N1,res,tontti:T.nimi}; render(); }
+  catch(e){ MA[l.n]={fail:e.message,tontti:T.nimi}; meluPanel(); } }
+// luokka = indeksi kaupungin väriasteikossa (nouseva dB), -1 = alle asteikon, null = ei tulkittavissa
+function cls(r,g,b,a){ if(a<40) return -1; let best=null, bd=1e9; pal().forEach(([h],i)=>{ const c=hexRgb(h), d=Math.abs(c[0]-r)+Math.abs(c[1]-g)+Math.abs(c[2]-b); if(d<bd){bd=d;best=i;} }); return bd<=90?best:null; }
+const ge=(k,db)=>k!==null && k>=0 && pal()[k][1]>=db;
+const meluCol=k=>k<0?'#ffffff':pal()[k][0];
+const meluLab=k=>k===null?'–':k<0?`alle ${pal()[0][1]}`:k===pal().length-1?`yli ${pal()[k][1]}`:`${pal()[k][1]}–${pal()[k][1]+5}`;
+function sampleLocal(p){ let mx=null; for(const l of meluOn()){ const A=MA[l.n]; if(!A||!A.data||A.tontti!==T.nimi) continue;
+  const r=R2(p), E=T.origo[0]+r[0], N=T.origo[1]+r[1], c=Math.floor((E-A.E0)/A.res), w=Math.floor((A.N1-N)/A.res);
+  if(c<0||w<0||c>=A.W||w>=A.H) continue; const i=(w*A.W+c)*4, k=cls(A.data[i],A.data[i+1],A.data[i+2],A.data[i+3]);
+  if(k!==null && (mx===null||k>mx)) mx=k; } return mx; }
+function meluReady(){ const ls=meluOn(); return ls.length && ls.some(l=>MA[l.n]&&MA[l.n].data&&MA[l.n].tontti===T.nimi); }
+function facadeSamples(o){ const P=rectPts(o), out=[];
+  for(let i=0;i<P.length;i++){ const a=P[i], b=P[(i+1)%P.length], dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy); if(L<0.5) continue;
+    let nx=dy/L, ny=-dx/L; const mid=[(a[0]+b[0])/2+nx*0.6,(a[1]+b[1])/2+ny*0.6]; if(inside(mid,P)){ nx=-nx; ny=-ny; }
+    const n=Math.max(1,Math.round(L)); for(let j=0;j<n;j++){ const t0=j/n, t1=(j+1)/n, tm=(t0+t1)/2;
+      const s=[a[0]+dx*tm+nx*1.5, a[1]+dy*tm+ny*1.5];
+      out.push({k:sampleLocal(s), len:L/n, p0:[a[0]+dx*t0+nx*0.7,a[1]+dy*t0+ny*0.7], p1:[a[0]+dx*t1+nx*0.7,a[1]+dy*t1+ny*0.7]}); } }
+  return out; }
+function meluFacades(sw){ if(!WM.julk || !meluReady()) return ''; let h='';
+  for(const o of S.objs.filter(isMass)) for(const s of facadeSamples(o)){ if(s.k===null) continue; const q0=sv(s.p0), q1=sv(s.p1);
+    h+=`<line x1="${q0[0]}" y1="${q0[1]}" x2="${q1[0]}" y2="${q1[1]}" stroke="${meluCol(s.k)}" stroke-width="1.3" stroke-linecap="butt" pointer-events="none"/>`; }
+  return h; }
+function meluPanel(){ const el=$('melu-res'); if(!el) return;
+  const c=cityOf(); if(cityOn() && !c.melu){ el.innerHTML=`<p class="hint" style="margin:0">${esc(c.meluTxt)}</p>`; return; }
+  const ls=meluOn(); if(!ls.length){ el.innerHTML='<p class="hint" style="margin:0">Laita Lden-melutaso päälle, niin talojen julkisivuille lasketaan melutaso ja pihan osuus yli 55 dB.</p>'; return; }
+  const fail=ls.map(l=>MA[l.n]).find(a=>a&&a.fail); if(fail && !meluReady()){ el.innerHTML=`<p class="hint bad" style="margin:0">Melukuvaa ei saatu: ${fail.fail}</p>`; return; }
+  if(!meluReady()){ el.innerHTML='<p class="hint" style="margin:0">Haetaan melukuvaa…</p>'; return; }
+  const rows=S.objs.filter(isMass).map(o=>{ const ss=facadeSamples(o).filter(s=>s.k!==null); const L=ss.reduce((a,s)=>a+s.len,0)||1;
+    const mx=ss.reduce((m,s)=>Math.max(m,s.k),-1), y55=ss.filter(s=>ge(s.k,55)).reduce((a,s)=>a+s.len,0), y60=ss.filter(s=>ge(s.k,60)).reduce((a,s)=>a+s.len,0);
+    return `<tr><td>${esc(o.id)}</td><td><i class="sw" style="background:${meluCol(mx)}"></i>${meluLab(mx)} dB</td><td>${Math.round(100*y55/L)} %</td><td>${Math.round(100*y60/L)} %</td></tr>`; }).join('');
+  // piha: 2 m ruudukko korttelissa, ei talojen, pihapaikkojen eikä ramppien päällä
+  const K=T.kortteli, xs=K.map(p=>p[0]), ys=K.map(p=>p[1]), block=S.objs.filter(o=>o.tyyppi!=='kansi').map(rectPts);
+  let n=0, n55=0; for(let x=Math.min(...xs)+1;x<Math.max(...xs);x+=2) for(let y=Math.min(...ys)+1;y<Math.max(...ys);y+=2){ const p=[x,y];
+    if(!inside(p,K) || block.some(Q=>inside(p,Q))) continue; const k=sampleLocal(p); if(k===null) continue; n++; if(ge(k,55)) n55++; }
+  el.innerHTML=`<table><tr><th>Talo</th><th>Suurin julkisivulla</th><th>≥ 55 dB</th><th>≥ 60 dB</th></tr>${rows||'<tr><td colspan="4">Ei taloja</td></tr>'}</table>
+    <p class="hint">Piha-alueesta (myös kansi) <b>${n?Math.round(100*n55/n):0} %</b> on Lden ≥ 55 dB. Osuudet = julkisivun pituudesta, 1,5 m seinästä.</p>`; }
+
+// ---------- käyttöliittymä ----------
+function wmsUI(){ const el=$('wms'); if(!el) return;
+  if(!cityOn()){ el.innerHTML='<p class="hint" style="margin:0">Karttatasot ovat käytössä Espoon, Helsingin ja Vantaan alueilla.</p>'; return; }
+  const c=cityOf(), P=pal();
+  el.innerHTML=`<p class="hint" style="margin:0 0 6px">Karttatasot: <b>${c.gen} kaupunki</b> (${esc(c.lahde.replace(/^©\s*/,''))})</p>
+   <div class="fields"><label class="wide">Taustakuva<select id="w-base">${WBASE.map(([n,t])=>`<option value="${n}" ${WM.base===n?'selected':''}>${t}</option>`).join('')}</select></label></div>
+   <div class="wst" data-wst="${esc(baseName())}"></div>
+   <div class="wl">${c.over.map(l=>`<label class="chk"><input type="checkbox" data-w="${l.id}" ${WM.on[l.id]?'checked':''}>${l.t}</label><input type="range" min="0" max="1" step="0.05" value="${opOf(l)}" data-wo="${l.id}" aria-label="Peittävyys: ${l.t}"><div class="wst" data-wst="${esc(l.n)}"></div>`).join('')}</div>
+   ${P.length?`<div class="mlg">${P.map((x,i)=>`<span><i style="background:${x[0]}"></i>${meluLab(i)}</span>`).join('')}<span>dB Lden · ${esc(c.meluTxt)}</span></div>`:`<p class="hint">${esc(c.meluTxt)}</p>`}
+   <label class="chk" style="margin-top:6px"><input type="checkbox" id="w-top" ${WM.top?'checked':''}> Tasot luonnoksen päällä</label>
+   ${P.length?`<label class="chk"><input type="checkbox" id="w-julk" ${WM.julk?'checked':''}> Näytä melutaso talojen julkisivuilla</label>`:''}`;
+  $('w-base').onchange=e=>{ WM.base=e.target.value; wmsUI(); render(); updateWms(); };
+  el.querySelectorAll('[data-w]').forEach(x=>x.onchange=e=>{ const id=e.target.dataset.w; WM.on[id]=e.target.checked; const l=c.over.find(y=>y.id===id);
+    if(!e.target.checked) setSt(l.n,''); if(l.melu && e.target.checked) fetchAnalysis(l); render(); updateWms(); });
+  el.querySelectorAll('[data-wo]').forEach(x=>x.oninput=e=>{ WM.op[e.target.dataset.wo]=+e.target.value; render(); });
+  $('w-top').onchange=e=>{ WM.top=e.target.checked; render(); };
+  if($('w-julk')) $('w-julk').onchange=e=>{ WM.julk=e.target.checked; render(); };
+  for(const [n,s] of Object.entries(WM.st)) setSt(n,s.t,s.bad); }
+
+// ---------- WFS: kiinteistöt ja asemakaava valitun kaupungin palvelusta ----------
+function parseGML(txt){ const d=new DOMParser().parseFromString(txt,'text/xml');
+  return [...d.getElementsByTagName('gml:featureMember')].map(fm=>{ const f=fm.firstElementChild, props={}; const rings=[];
+    for(const c of f.children){ const ps=c.getElementsByTagName('gml:Polygon');
+      if(ps.length){ for(const p of ps){ const ob=p.getElementsByTagName('gml:outerBoundaryIs')[0]; const cs=(ob||p).getElementsByTagName('gml:coordinates')[0]; if(cs) rings.push(cs.textContent.trim().split(/\s+/).map(s=>s.split(',').slice(0,2).map(Number))); } }
+      else props[c.localName]=c.textContent.trim(); } return {props,rings}; }); }
+async function wfsGet(type,params,k){ const c=cityOf(k); if(!c) throw new Error('kaupunki ei ole tiedossa');
+  const r=await fetch(`${c.wfs}?SERVICE=WFS&VERSION=1.0.0&REQUEST=GetFeature&TYPENAME=${type}&${params}`); if(!r.ok) throw new Error('WFS '+r.status); return parseGML(await r.text()); }
+// kiinteistötunnus muotoon 91-4-162-2 (myös 091-004-0162-0002 ja 09100401620002)
+function normTunnus(q){ q=String(q).trim(); let m=q.match(/^(\d{1,3})-(\d{1,3})-(\d{1,4})-(\d{1,4})$/);
+  if(!m && /^\d{14}$/.test(q)) m=[q,q.slice(0,3),q.slice(3,6),q.slice(6,10),q.slice(10)];
+  return m?m.slice(1,5).map(Number).join('-'):null; }
+const tunnusKunta=t=>KUNTANRO[t.split('-')[0]]||null;
+function parcelOf(f,k){ const c=cityOf(k).kiint, t=(f.props[c.id]||'').trim(), a=f.rings.reduce((s,R)=>s+area(R),0);
+  return {t, rings:f.rings, a, ala:(c.ala&&+f.props[c.ala])||a, laji:(c.laji&&f.props[c.laji])||''}; }
+// Kiinteistö voi olla useassa palstassa, jotka tulevat WFS:stä erillisinä kohteina samalla tunnuksella
+// (esim. Vantaa 92-421-6-382: kaksi palstaa, välissä kulkuväylä). Yhdistetään ne yhdeksi kiinteistöksi.
+const ringKey=R=>R.length+':'+R[0][0].toFixed(1)+','+R[0][1].toFixed(1)+':'+area(R).toFixed(0);
+function mergeRings(A,B){ const seen=new Set(A.map(ringKey)), out=A.slice(); for(const R of B) if(!seen.has(ringKey(R))){ seen.add(ringKey(R)); out.push(R); } return out; }
+function mergeFeats(fs,k){ const c=cityOf(k).kiint, g={};
+  for(const f of fs){ const t=(f.props[c.id]||'').trim(); if(!t||!f.rings.length) continue;
+    if(!g[t]) g[t]={props:f.props, rings:f.rings.slice()}; else g[t].rings=mergeRings(g[t].rings,f.rings); }
+  return Object.values(g); }
+function mergeParcel(old,p){ if(!old) return p; const rings=mergeRings(old.rings,p.rings), a=rings.reduce((s,R)=>s+area(R),0);
+  return {...old, rings, a, ala:(old.ala!==old.a?old.ala:a)}; }
+async function parcelByTunnus(tunnus,k){ const c=cityOf(k).kiint;
+  const flt=`<Filter><PropertyIsEqualTo><PropertyName>${c.id}</PropertyName><Literal>${tunnus}</Literal></PropertyIsEqualTo></Filter>`;
+  return mergeFeats((await wfsGet(c.type,'FILTER='+encodeURIComponent(flt),k)).filter(x=>(x.props[c.id]||'').trim()===tunnus),k)[0]; }
+async function kaavaInfo(cx,cy,k){ const c=cityOf(k).kaava;
+  try{ const ak=await wfsGet(c.type,'BBOX='+[cx-1,cy-1,cx+1,cy+1].join(','),k);
+    const hit=ak.filter(x=>x.rings.some(R=>inside([cx,cy],R))).sort((a,b)=>String(c.pvm(b.props)).localeCompare(String(c.pvm(a.props))));
+    const a=hit[0]||ak[0]; if(!a) return {kaava:'',kaavaPdf:''};
+    const muut=[...new Set(hit.slice(1).filter(x=>c.id(x.props)&&c.id(x.props)!==c.id(a.props)).map(x=>c.id(x.props)+(c.pvm(x.props)?` (${pvm(c.pvm(x.props))})`:'')))];   // vanhemmat kaavat samassa kohdassa (osin korvattuja)
+    const pdf=c.pdf(a.props)||''; return {kaava:c.teksti(a.props).replace(/\s+/g,' ').replace(' )',')')+(muut.length?` Samassa kohdassa myös vanhempia kaavoja: ${muut.slice(0,4).join(', ')}${muut.length>4?' …':''} (TARKISTA mikä on voimassa).`:''), kaavaPdf:/^https?:/.test(pdf)?pdf:''}; }
+  catch(e){ return {kaava:'',kaavaPdf:''}; } }
+function saveOwn(){ try{ const own={}; for(const [k,t] of Object.entries(DATA.tontit)) if(t.oma){ const {pohjat,...rest}=t; own[k]={...rest,pohjat:{}}; } localStorage.setItem('kaavaeditori-tontit',JSON.stringify(own)); }catch(e){} }
+function loadOwn(){ try{ const own=JSON.parse(localStorage.getItem('kaavaeditori-tontit')||'{}'); for(const [k,t] of Object.entries(own)) if(!DATA.tontit[k]) DATA.tontit[k]=t; }catch(e){} }
+function tonttiOptions(){ $('tontti').innerHTML=Object.entries(DATA.tontit).map(([k,t])=>`<option value="${k}">${esc(t.nimi)}</option>`).join(''); }
+
+// ---------- paikallinen tallennus ja lataus (kun sivu ei ole claude.ai:ssa) ----------
+function localDB(){ const K='kaavaeditori-suunnitelmat', subs=new Set();
+  const read=()=>{ try{ return JSON.parse(localStorage.getItem(K)||'{}'); }catch(e){ return {}; } };
+  const write=o=>{ try{ localStorage.setItem(K,JSON.stringify(o)); }catch(e){ toast('Selaimen muisti ei ole käytettävissä – lataa JSON-tiedosto'); } subs.forEach(f=>f()); };
+  return { collection(){ return {
+    where(f,op,v){ return { onSnapshot(cb){ const fire=()=>cb({docs:Object.entries(read()).filter(([,d])=>d[f]===v).map(([id,d])=>({id,data:()=>d}))}); subs.add(fire); fire(); return ()=>subs.delete(fire); } }; },
+    doc(id){ return { async set(d){ const a=read(); a[id]=d; write(a); }, async delete(){ const a=read(); delete a[id]; write(a); } }; },
+    async add(d){ const a=read(), id='p'+Date.now().toString(36); a[id]=d; write(a); return {id}; } }; } }; }
+const localDL={ async save({filename,data}){ const b=new Blob([data],{type:/\.svg$/.test(filename)?'image/svg+xml':'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); return {status:'saved'}; } };
+async function importJSON(file){ try{ const js=JSON.parse(await file.text()); let st=typeof js.tila==='string'?JSON.parse(js.tila):js.tila; if(!st||!st.objs) throw new Error('ei editorin JSON-vientiä');
+    if(js.tonttidata && !DATA.tontit[js.tontti]){ DATA.tontit[js.tontti]={...js.tonttidata,oma:true}; saveOwn(); tonttiOptions(); }
+    if(!DATA.tontit[js.tontti]) throw new Error('tiedoston tonttia ei ole tällä sivulla');
+    if($('tontti').value!==js.tontti){ $('tontti').value=js.tontti; setTontti(js.tontti); }
+    snap(); S=st; sel=null; $('plan-name').value=(file.name||'').replace(/\.json$/,''); syncNormi(); render(); toast('Tuotu: '+file.name); }
+  catch(e){ toast('Tuonti ei onnistunut: '+e.message); } }
+
+// ================= Aloitus: osoitehaku ja tonttien valinta hiirellä =================
+// Haku päättää ensin kaupungin (Espoo, Helsinki tai Vantaa) ja vasta sitten kiinteistörajat ja taustakuva
+// haetaan sen kaupungin palvelusta. Sama katuosoite voi olla useassa kaupungissa: silloin näytetään valintalista.
+if(typeof proj4!=='undefined') proj4.defs('EPSG:3879','+proj=tmerc +lat_0=0 +lon_0=25 +k=1 +x_0=25500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs');
+const VA={c:null, vb:null, parcels:{}, sel:{}, img:null, base:'orto', city:'Espoo', loading:0, drag:null, timer:null, ctl:null, osoite:''};
+const VMAX=900;          // rajat haetaan, kun näkymä on enintään 900 m leveä
+const ISO=30000;         // tätä suuremmat (yleiset alueet, esim. 49-22-9901-0) eivät ole valittavissa
+const OSOITE_WFS='https://kartta.hel.fi/ws/geoserver/avoindata/wfs';   // PKS-osoiteluettelo: Helsinki, Espoo, Vantaa ja Kauniainen
+const KUNNAT={espoo:'Espoo',esbo:'Espoo',helsinki:'Helsinki',helsingfors:'Helsinki',vantaa:'Vantaa',vanda:'Vantaa',kauniainen:'Kauniainen',grankulla:'Kauniainen'};
+function vaMsg(t,bad){ const e=$('va-msg'); e.textContent=t; e.className='hint'+(bad?' bad':''); }
+function vaOpen(show){ const d=$('va'); if(show){ if(!d.open) d.showModal(); if(VA.vb) vaRender(); setTimeout(()=>$('va-q').focus(),30); } else if(d.open) d.close(); }
+function vaSetCity(k){ if(!CITY[k]) return; $('va-city').value=k; if(VA.city===k) return;
+  const had=Object.keys(VA.sel).length; VA.city=k; VA.parcels={}; VA.sel={}; VA.img=null;
+  if(had) toast(`Kaupunki vaihtui: ${k}. Aiemmat valinnat tyhjennettiin (alue muodostetaan yhden kaupungin kiinteistöistä).`); }
+// "Kuusitie 1 A, 00270 Helsinki" -> {katu:'Kuusitie', nro:'1', kirjain:'a', kunta:'Helsinki', postinro:'00270'}
+function parseOsoite(q){ let s=q.replace(/\s+/g,' ').trim(), kunta=null, postinro=null;
+  const pm=s.match(/\b(\d{5})\b/); if(pm){ postinro=pm[1]; s=s.replace(pm[0],' '); }
+  s=s.replace(/[,\s]+([A-Za-zÅÄÖåäö]+)\s*$/,(m,w)=>{ const k=KUNNAT[w.toLowerCase()]; if(k){ kunta=k; return ''; } return m; }).replace(/[,\s]+$/,'').trim();
+  const m=s.match(/^(.*?\D)\s*(\d+)\s*([a-zåäö])?\b/i);
+  if(!m) return {katu:s, nro:'', kirjain:'', kunta, postinro};
+  return {katu:m[1].replace(/[,\s]+$/,'').trim(), nro:m[2], kirjain:(m[3]||'').toLowerCase(), kunta, postinro}; }
+const likeLit=s=>s.replace(/[<>&]/g,'').replace(/[!*#]/g,c=>'!'+c);
+async function osoiteHaku(a,prefix){ const like=(p,v)=>`<PropertyIsLike wildCard="*" singleChar="#" escapeChar="!" matchCase="false"><PropertyName>${p}</PropertyName><Literal>${likeLit(v)}${prefix?'*':''}</Literal></PropertyIsLike>`;
+  let f=`<Or>${like('katunimi',a.katu)}${like('gatan',a.katu)}</Or>`;
+  if(a.nro) f=`<And>${f}<PropertyIsEqualTo><PropertyName>osoitenumero</PropertyName><Literal>${a.nro}</Literal></PropertyIsEqualTo></And>`;
+  const url=`${OSOITE_WFS}?SERVICE=WFS&VERSION=1.0.0&REQUEST=GetFeature&TYPENAME=avoindata:PKS_osoiteluettelo&MAXFEATURES=${a.nro?60:400}&outputFormat=application/json&PROPERTYNAME=katunimi,gatan,osoitenumero,osoitekirjain,kaupunki,postinumero,n,e&FILTER=`+encodeURIComponent(`<Filter>${f}</Filter>`);
+  const ac=new AbortController(), to=setTimeout(()=>ac.abort(),15000);
+  try{ const r=await fetch(url,{signal:ac.signal}); if(!r.ok) throw new Error('osoitepalvelu '+r.status); const js=await r.json();
+    return js.features.map(x=>x.properties).filter(p=>p.kaupunki && isFinite(+p.e) && isFinite(+p.n)); } finally{ clearTimeout(to); } }
+// ryhmittely: numeron kanssa yksi rivi per osoite, ilman numeroa yksi rivi per katu ja kaupunki
+function osoiteRivit(rows,a){ const g={};
+  for(const p of rows){ const nro=a.nro?`${p.osoitenumero}${p.osoitekirjain||''}`:'', key=`${p.kaupunki}|${p.katunimi}|${nro}`;
+    (g[key]=g[key]||{kunta:p.kaupunki, katu:p.katunimi, nro, posti:p.postinumero, pts:[]}).pts.push([+p.e,+p.n]); }
+  let out=Object.values(g);
+  if(a.nro){ let k=a.kirjain?out.filter(r=>r.nro.toLowerCase()===a.nro+a.kirjain):[]; if(!k.length) k=out.filter(r=>r.nro===a.nro); if(k.length) out=k; }
+  if(a.kunta) out=out.filter(r=>r.kunta===a.kunta);
+  if(a.postinro){ const k=out.filter(r=>r.posti===a.postinro); if(k.length) out=k; }
+  for(const r of out){ const P=r.pts.slice().sort((x,y)=>x[0]-y[0]); r.c=P[Math.floor(P.length/2)];
+    r.label=`${r.katu}${r.nro?' '+r.nro:''}, ${r.posti||''} ${r.kunta}`.replace(/\s+/g,' '); }
+  const ord=['Espoo','Helsinki','Vantaa','Kauniainen']; return out.sort((x,y)=>ord.indexOf(x.kunta)-ord.indexOf(y.kunta)||x.katu.localeCompare(y.katu,'fi')); }
+// paikannimet ja muut, joita osoiteluettelossa ei ole (esim. "Tapiola", "Kampin keskus")
+async function nominatimHaku(q){ const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&countrycodes=fi&viewbox=24.45,60.42,25.30,60.08&bounded=1&q='+encodeURIComponent(q));
+  const js=await r.json(), seen=new Set(), out=[];
+  for(const x of js){ const ad=x.address||{}, kunta=ad.city||ad.town||ad.municipality||''; if(!KUNNAT[kunta.toLowerCase()]) continue;
+    const label=x.display_name.split(',').slice(0,2).join(',').trim()+', '+KUNNAT[kunta.toLowerCase()], key=label.toLowerCase(); if(seen.has(key)) continue; seen.add(key);
+    out.push({kunta:KUNNAT[kunta.toLowerCase()], label, c:proj4('WGS84','EPSG:3879',[+x.lon,+x.lat])}); }
+  return out; }
+function vaHits(list,otsikko){ const el=$('va-hits');
+  if(!list.length){ el.hidden=true; el.innerHTML=''; return; }
+  el.hidden=false; VA.hits=list;
+  el.innerHTML=`<p class="hint" style="margin:0 0 4px;flex-basis:100%">${esc(otsikko)}</p>`+list.map((r,i)=>CITY[r.kunta]
+    ? `<button type="button" data-hit="${i}"><b>${esc(r.kunta)}</b> · ${esc(r.label.replace(new RegExp('\\s*'+r.kunta+'$'),''))}</button>`
+    : `<button type="button" disabled title="Kauniaisten karttapalvelua ei ole lisätty">${esc(r.label)} (ei tuettu)</button>`).join(''); }
+function vaPick(r){ vaHits([]); vaSetCity(r.kunta); VA.pin=r.c; VA.osoite=r.label.replace(/,.*$/,'');
+  vaGo(r.c,260); vaMsg(`${r.label} – klikkaa tontteja, jotka kuuluvat suunnitelmaan.`); }
+async function vaSearch(q){ q=q.trim(); if(!q) return; vaHits([]); vaMsg('Haetaan…');
+  try{
+    const tn=normTunnus(q);
+    if(tn){ const k=tunnusKunta(tn);
+      if(!k){ vaMsg(`Kuntanumero ${tn.split('-')[0]} ei ole Espoo (49), Helsinki (91) tai Vantaa (92).`,true); return; }
+      if(!CITY[k]){ vaMsg(`${tn} kuuluu kuntaan ${k} – sen karttapalvelua ei ole lisätty editoriin.`,true); return; }
+      vaSetCity(k); vaMsg(`Haetaan ${CITY[k].gen} kiinteistörekisteristä…`);
+      const f=await parcelByTunnus(tn,k);
+      if(!f||!f.rings.length){ vaMsg(`${tn} ei löytynyt ${CITY[k].gen} kiinteistörekisteristä. Hae osoitteella ja valitse tontit kartalta.`,true); return; }
+      const Q=f.rings.flat(), c=[Q.reduce((s,p)=>s+p[0],0)/Q.length, Q.reduce((s,p)=>s+p[1],0)/Q.length];
+      VA.pin=null; VA.osoite=''; vaGo(c,260); vaAdd(f);
+      vaMsg(`${tn} (${k}) valittu${f.rings.length>1?` – kiinteistössä on ${f.rings.length} palstaa`:''}. Klikkaa viereisiä tontteja lisätäksesi ne.`); return; }
+    const a=parseOsoite(q);
+    if(a.kunta==='Kauniainen'){ vaMsg('Kauniaisten karttapalvelua ei ole lisätty editoriin (vain Espoo, Helsinki ja Vantaa).',true); return; }
+    let rows=[], virhe=null;
+    if(a.katu.length>=2){ try{ rows=osoiteRivit(await osoiteHaku(a,false),a);
+      if(!rows.length) rows=osoiteRivit(await osoiteHaku(a,true),a); }catch(e){ virhe=e; } }
+    if(!rows.length){ try{ rows=await nominatimHaku(q); if(a.kunta) rows=rows.filter(r=>r.kunta===a.kunta); }catch(e){ virhe=virhe||e; } }
+    const ok=rows.filter(r=>CITY[r.kunta]);
+    if(!rows.length){ vaMsg(virhe?'Haku epäonnistui: '+(virhe.message||virhe):'Osoitetta ei löytynyt. Kokeile muotoa "Kuusitie 1" tai "Kuusitie 1, Vantaa".',true); return; }
+    if(ok.length===1 && rows.length===1){ vaPick(ok[0]); return; }
+    if(!ok.length){ vaHits(rows,'Osoite on vain Kauniaisissa, jota ei ole lisätty editoriin.'); vaMsg('Ei osumia Espoosta, Helsingistä tai Vantaalta.',true); return; }
+    const kunnat=[...new Set(ok.map(r=>r.kunta))];
+    vaHits(rows.slice(0,24), kunnat.length>1 ? `Sama osoite löytyy useasta kaupungista (${kunnat.join(', ')}) – valitse oikea:` : 'Useita osumia – valitse oikea:');
+    vaMsg(rows.length>24?`Osumia ${rows.length}, näytetään 24. Tarkenna hakua (lisää numero tai kaupunki).`:'Valitse osoite listasta.');
+  }catch(e){ vaMsg('Haku epäonnistui: '+(e&&e.message||e),true); } }
+function vaGo(c,w){ const el=$('va-svg'), h=w*(el.clientHeight||500)/(el.clientWidth||700); VA.c=c; VA.vb=[-w/2,-h/2,w,h]; vaRender(); vaLoad(); }
+const vaSv=([E,N])=>[E-VA.c[0], -(N-VA.c[1])];
+const vaReal=([x,y])=>[VA.c[0]+x, VA.c[1]-y];
+function vaExt(){ const [x,y,w,h]=VA.vb; return {E0:VA.c[0]+x, E1:VA.c[0]+x+w, N0:VA.c[1]-(y+h), N1:VA.c[1]-y}; }
+async function vaLoad(){ if(!VA.c) return; const {E0,E1,N0,N1}=vaExt(), w=E1-E0, el=$('va-svg'), k=VA.city;
+  if(VA.ctl) VA.ctl.abort(); VA.ctl=new AbortController(); const my=VA.ctl;
+  // taustakuva valitun kaupungin palvelusta
+  const px=Math.min(2048,Math.round((el.clientWidth||700)*Math.min(2,window.devicePixelRatio||1)));
+  getPng(wmsUrl(baseName(k,VA.base),E0,N0,E1,N1,px,Math.round(px*(N1-N0)/w),k),25000).then(b=>{ if(my!==VA.ctl) return; if(VA.img) URL.revokeObjectURL(VA.img.url); VA.img={url:URL.createObjectURL(b),E0,N1,w,h:N1-N0}; vaRender(); }).catch(()=>{});
+  if(w>VMAX){ vaMsg('Lähennä karttaa (rullalla), niin kiinteistörajat tulevat näkyviin.'); return; }
+  try{ const fs=await wfsGet(CITY[k].kiint.type,'BBOX='+[E0,N0,E1,N1].map(v=>v.toFixed(1)).join(','),k);
+    if(my!==VA.ctl || k!==VA.city) return;
+    for(const f of mergeFeats(fs,k)){ const p=parcelOf(f,k); VA.parcels[p.t]=mergeParcel(VA.parcels[p.t],p); if(VA.sel[p.t]) VA.sel[p.t]=VA.parcels[p.t]; }
+    vaRender(); }catch(e){ if(e.name!=='AbortError') vaMsg(`${CITY[k].gen} kiinteistörajojen haku epäonnistui: `+e.message,true); } }
+function vaAdd(f){ const p=parcelOf(f,VA.city); VA.parcels[p.t]=mergeParcel(VA.parcels[p.t],p); VA.sel[p.t]=VA.parcels[p.t]; vaRender(); }
+function vaRender(){ const el=$('va-svg'); if(!VA.vb){ el.innerHTML=''; return; } el.setAttribute('viewBox',VA.vb.join(' '));
+  const sw=VA.vb[2]/700; let h=`<rect x="${VA.vb[0]-2000}" y="${VA.vb[1]-2000}" width="${VA.vb[2]+4000}" height="${VA.vb[3]+4000}" fill="#e9e8e2"/>`;
+  if(VA.img){ const q=vaSv([VA.img.E0,VA.img.N1]); h+=`<image href="${VA.img.url}" x="${q[0]}" y="${q[1]}" width="${VA.img.w}" height="${VA.img.h}" preserveAspectRatio="none"/>`; }
+  const P=Object.values(VA.parcels).filter(p=>p.a<=ISO).sort((a,b)=>b.a-a.a);
+  for(const p of P){ const s=!!VA.sel[p.t];
+    for(const R of p.rings) h+=`<polygon points="${R.map(r=>vaSv(r).map(v=>v.toFixed(2)).join(',')).join(' ')}" fill="${s?'#ff5a1f':'#ffffff'}" fill-opacity="${s?0.45:0.04}" stroke="${s?'#ff5a1f':'#ffe14d'}" stroke-width="${sw*(s?2.6:1.3)}" data-t="${p.t}"/>`; }
+  if(VA.vb[2]<=450) for(const p of P) for(const R of p.rings){ if(area(R)<20) continue; const c=vaSv([R.reduce((s,q)=>s+q[0],0)/R.length, R.reduce((s,q)=>s+q[1],0)/R.length]);
+    h+=`<text x="${c[0]}" y="${c[1]}" font-size="${sw*11}" text-anchor="middle" dominant-baseline="middle" fill="#fff" stroke="#000" stroke-width="${sw*2.4}" paint-order="stroke" pointer-events="none">${p.t.split('-').slice(2).join('-')}</text>`; }
+  if(VA.pin){ const q=vaSv(VA.pin); h+=`<circle cx="${q[0]}" cy="${q[1]}" r="${sw*6}" fill="#1f6f78" stroke="#fff" stroke-width="${sw*2}" pointer-events="none"/>`; }
+  el.innerHTML=h;
+  const S_=Object.values(VA.sel), tot=S_.reduce((s,p)=>s+p.ala,0);
+  $('va-list').innerHTML = S_.length ? S_.map(p=>`<span class="chip">${p.t} <small>${fmt(p.ala)} m²</small><button type="button" data-unsel="${p.t}" aria-label="Poista ${p.t}">×</button></span>`).join('')+`<b class="tot">Yhteensä ${fmt(tot)} m² · ${VA.city}</b>` : '<span class="hint" style="margin:0">Ei valittuja tontteja.</span>';
+  $('va-create').disabled=!S_.length; }
+function vaHit(ev){ const el=$('va-svg'), pt=el.createSVGPoint(); pt.x=ev.clientX; pt.y=ev.clientY; const q=pt.matrixTransform(el.getScreenCTM().inverse()); const p=vaReal([q.x,q.y]);
+  return Object.values(VA.parcels).filter(x=>x.a<=ISO && x.rings.some(R=>inside(p,R))).sort((a,b)=>a.a-b.a)[0]; }
+function vaInit(){
+  const el=$('va-svg');
+  el.addEventListener('pointerdown',ev=>{ if(!VA.vb) return; VA.drag={x:ev.clientX,y:ev.clientY,vb:[...VA.vb],moved:false}; el.setPointerCapture(ev.pointerId); });
+  el.addEventListener('pointermove',ev=>{ const d=VA.drag; if(!d) return; const r=el.getBoundingClientRect(), s=VA.vb[2]/r.width, dx=ev.clientX-d.x, dy=ev.clientY-d.y;
+    if(Math.abs(dx)+Math.abs(dy)>4) d.moved=true; if(!d.moved) return; VA.vb[0]=d.vb[0]-dx*s; VA.vb[1]=d.vb[1]-dy*s; vaRender(); });
+  el.addEventListener('pointerup',ev=>{ const d=VA.drag; VA.drag=null; if(!d) return;
+    if(d.moved){ clearTimeout(VA.timer); VA.timer=setTimeout(vaLoad,300); return; }
+    const p=vaHit(ev); if(!p) return; if(VA.sel[p.t]) delete VA.sel[p.t]; else VA.sel[p.t]=p; vaRender(); });
+  el.addEventListener('wheel',ev=>{ if(!VA.vb) return; ev.preventDefault(); const r=el.getBoundingClientRect(), fx=(ev.clientX-r.left)/r.width, fy=(ev.clientY-r.top)/r.height, k=ev.deltaY>0?1.15:1/1.15;
+    const w=Math.min(4000,Math.max(60,VA.vb[2]*k)), h=w*VA.vb[3]/VA.vb[2]; VA.vb=[VA.vb[0]+(VA.vb[2]-w)*fx, VA.vb[1]+(VA.vb[3]-h)*fy, w, h]; vaRender(); clearTimeout(VA.timer); VA.timer=setTimeout(vaLoad,400); },{passive:false});
+  el.addEventListener('mousemove',ev=>{ if(VA.drag) return; const p=vaHit(ev); el.style.cursor=p?'pointer':'grab'; el.title=p?[p.t,p.laji,fmt(p.ala)+' m²'].filter(Boolean).join(' · '):''; });
+  $('va-list').addEventListener('click',ev=>{ const b=ev.target.closest('[data-unsel]'); if(b){ delete VA.sel[b.dataset.unsel]; vaRender(); } });
+  $('va-hits').addEventListener('click',ev=>{ const b=ev.target.closest('[data-hit]'); if(b) vaPick(VA.hits[+b.dataset.hit]); });
+  $('va-go').onclick=()=>vaSearch($('va-q').value); $('va-q').addEventListener('keydown',e=>{ if(e.key==='Enter') vaSearch($('va-q').value); });
+  $('va-base').onchange=e=>{ VA.base=e.target.value; vaLoad(); };
+  $('va-city').onchange=e=>{ vaSetCity(e.target.value); if(VA.c){ vaRender(); vaLoad(); vaMsg(`Kiinteistörajat haetaan nyt ${CITY[VA.city].gen} palvelusta.`); } };
+  $('va-clear').onclick=()=>{ VA.sel={}; vaRender(); };
+  $('va-create').onclick=vaCreate; $('va-skip').onclick=()=>vaOpen(false); $('va-close').onclick=()=>vaOpen(false); $('va-open').onclick=()=>vaOpen(true);
+  $('va').addEventListener('click',e=>{ if(e.target===$('va')) vaOpen(false); });
+}
+function simplifyRing(R){ let P=R.slice(); if(P.length>1 && P[0][0]===P[P.length-1][0] && P[0][1]===P[P.length-1][1]) P.pop();
+  let changed=true; while(changed && P.length>3){ changed=false;
+    for(let i=0;i<P.length;i++){ const a=P[(i-1+P.length)%P.length], b=P[i], c=P[(i+1)%P.length];
+      const cr=Math.abs((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])), L=Math.hypot(c[0]-a[0],c[1]-a[1]);
+      if(Math.hypot(b[0]-a[0],b[1]-a[1])<0.05 || (L>0 && cr/L<0.05)){ P.splice(i,1); changed=true; break; } } }
+  return P; }
+// ---------- palstojen yhdistäminen: kapea väli (esim. kulkuväylä) täytetään sillalla ----------
+const BRIDGE=15;   // m: tätä lähempänä olevat osat yhdistetään
+function segDist(p,a,b){ const dx=b[0]-a[0], dy=b[1]-a[1], L=dx*dx+dy*dy; let t=L?((p[0]-a[0])*dx+(p[1]-a[1])*dy)/L:0; t=Math.max(0,Math.min(1,t)); return Math.hypot(p[0]-a[0]-t*dx, p[1]-a[1]-t*dy); }
+function ptRingDist(p,R){ let d=1e18; for(let i=0;i<R.length;i++) d=Math.min(d,segDist(p,R[i],R[(i+1)%R.length])); return d; }
+function ringDist(A,B){ let d=1e18; for(const p of A) d=Math.min(d,ptRingDist(p,B)); for(const p of B) d=Math.min(d,ptRingDist(p,A)); return d; }
+function hull(P){ P=P.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]); if(P.length<3) return P; const cr=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
+  const lo=[],up=[]; for(const p of P){ while(lo.length>=2&&cr(lo[lo.length-2],lo[lo.length-1],p)<=0) lo.pop(); lo.push(p); }
+  for(const p of P.slice().reverse()){ while(up.length>=2&&cr(up[up.length-2],up[up.length-1],p)<=0) up.pop(); up.push(p); }
+  return lo.slice(0,-1).concat(up.slice(0,-1)); }
+// palauttaa {ring, landA (osien todellinen ala), gapA (sillan ala), used, dropped}
+function joinParts(parts){ let main=parts[0], used=[parts[0]]; const rest=parts.slice(1), dropped=[]; let changed=true;
+  while(changed){ changed=false;
+    for(let i=0;i<rest.length;i++){ const q=rest[i], d=ringDist(main,q); if(d>BRIDGE) continue;
+      const lim=d+2, pts=main.filter(p=>ptRingDist(p,q)<=lim).concat(q.filter(p=>ptRingDist(p,main)<=lim));
+      const polys=[[main],[q]]; const H=hull(pts); if(H.length>=3) polys.push([H.concat([H[0]])]);
+      const U=polygonClipping.union(...polys).map(pg=>pg[0]).sort((a,b)=>area(b)-area(a));
+      if(U.length===1){ main=U[0]; used.push(q); rest.splice(i,1); changed=true; break; } } }
+  dropped.push(...rest); const landA=used.reduce((s,R)=>s+area(R),0);
+  return {ring:main, landA, gapA:Math.max(0,area(main)-landA), used, dropped}; }
+async function vaCreate(){ const sel=Object.values(VA.sel); if(!sel.length) return;
+  if(typeof polygonClipping==='undefined'){ vaMsg('Yhdistämiskirjasto ei latautunut (tarvitaan verkkoyhteys).',true); return; }
+  vaMsg('Muodostetaan suunnittelualue…');
+  try{
+    const k=VA.city;
+    const polys=sel.flatMap(p=>p.rings.map(R=>[R]));
+    const U=polygonClipping.union(...polys); if(!U.length) throw new Error('yhdistäminen ei tuottanut aluetta');
+    const parts=U.map(pg=>pg[0]).sort((a,b)=>area(b)-area(a));
+    const J=parts.length>1?joinParts(parts):{ring:parts[0], landA:area(parts[0]), gapA:0, used:[parts[0]], dropped:[]};
+    let ring=simplifyRing(J.ring);
+    const cx=ring.reduce((s,p)=>s+p[0],0)/ring.length, cy=ring.reduce((s,p)=>s+p[1],0)/ring.length;
+    let best=0, ang=0; for(let i=0;i<ring.length;i++){ const a=ring[i], b=ring[(i+1)%ring.length], L=Math.hypot(b[0]-a[0],b[1]-a[1]); if(L>best){ best=L; ang=Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI; } }
+    ang=((ang%90)+90)%90; if(ang>45) ang-=90; ang=Math.round(ang*100)/100;
+    const t=-ang*Math.PI/180, c=Math.cos(t), s=Math.sin(t);
+    const L=([x,y])=>{ const dx=x-cx, dy=y-cy; return [Math.round((dx*c-dy*s)*100)/100, Math.round((dx*s+dy*c)*100)/100]; };
+    const loc=ring.map(L), tontit={}; for(const p of sel) p.rings.filter(R=>area(R)>=1).forEach((R,i)=>{ tontit[i?`${p.t} (${i+1})`:p.t]=simplifyRing(R).map(L); });
+    // naapurit: valitsemattomat kiinteistöt 120 m säteellä
+    const naapurit=Object.values(VA.parcels).filter(p=>!VA.sel[p.t] && p.a<=ISO && p.rings[0].some(q=>Math.hypot(q[0]-cx,q[1]-cy)<120+Math.sqrt(area(ring)))).flatMap(p=>p.rings.map(R=>simplifyRing(R).map(L)));
+    const {kaava,kaavaPdf}=await kaavaInfo(cx,cy,k);
+    const qv=$('va-q').value.trim();
+    const nimi=($('va-name').value.trim()) || VA.osoite || (qv && !/^\d/.test(qv) ? qv : 'Suunnittelualue '+sel[0].t);
+    // pinta-ala = kiinteistöjen todellinen ala (silta palstojen välissä ei kuulu tonttiin)
+    const key='a-'+Date.now().toString(36), A=Math.round((J.gapA>1?J.landA:area(loc))*10)/10;
+    const palstaTxt=J.used.length>1?` Alue on ${J.used.length} erillistä palstaa; niiden välinen kaista (n. ${fmt(J.gapA)} m², esim. kulkuväylä) on piirretty alueeseen mutta ei sisälly pinta-alaan eikä tehokkuuteen (TARKISTA).`:'';
+    const pudTxt=J.dropped.length?` ${J.dropped.length} kauempana olevaa osaa (yli ${BRIDGE} m) jätettiin pois.`:'';
+    const NT={nimi, kunta:k, tunnus:sel.map(p=>p.t).join(', '), origo:[Math.round(cx*100)/100,Math.round(cy*100)/100], ang, kortteli:loc, reunat:loc.map(()=>'raja'), sb:{raja:4}, A,
+      tontit, naapurit, rakennukset:[], kadut:[], sisaanajo:[], kaava:(kaava?kaava+' ':'')+`Suunnittelualue: ${sel.length} kiinteistöä. Rajaetäisyys oletuksena 4 m kaikilta reunoilta.`+palstaTxt+pudTxt, kaavaPdf, lahde:CITY[k].lahde, pohjat:{}, oma:true};
+    DATA.tontit[key]=NT; saveOwn(); tonttiOptions(); $('tontti').value=key; if(!WM.base) WM.base='orto'; setTontti(key);
+    vaOpen(false); toast(`Suunnittelualue luotu (${k}): ${fmt(A)} m²`+(J.used.length>1?` – ${J.used.length} palstaa yhdistetty`:'')+(J.dropped.length?' – kaukana olevia osia jätettiin pois':''));
+  }catch(e){ vaMsg('Alueen muodostus epäonnistui: '+e.message,true); } }
+
+// ================= Vanhojen alueiden ja pohjien poisto =================
+const HIDK='kaavaeditori-piilotetut';
+function hidRead(){ try{ const h=JSON.parse(localStorage.getItem(HIDK)||'{}'); return {tontit:h.tontit||[], pohjat:h.pohjat||[]}; }catch(e){ return {tontit:[],pohjat:[]}; } }
+function hidWrite(h){ try{ localStorage.setItem(HIDK,JSON.stringify(h)); }catch(e){} }
+function applyHidden(){ const h=hidRead(); for(const k of h.tontit) if(DATA.tontit[k] && Object.keys(DATA.tontit).length>1) delete DATA.tontit[k];
+  for(const kp of h.pohjat){ const [k,p]=kp.split('|'); if(DATA.tontit[k]&&DATA.tontit[k].pohjat) delete DATA.tontit[k].pohjat[p]; } }
+function hiddenInfo(){ const h=hidRead(), n=h.tontit.length+h.pohjat.length, el=$('hidden-info'); if(!el) return;
+  el.innerHTML = n ? `Piilotettuja valmiita alueita tai pohjia: ${n}. <button type="button" id="restore-hidden">Palauta piilotetut</button>` : '';
+  if(n) $('restore-hidden').onclick=()=>{ hidWrite({tontit:[],pohjat:[]}); location.reload(); }; }
+function confirmBtn(btn,label,fn){ if(!btn.dataset.orig) btn.dataset.orig=btn.textContent; const reset=()=>{ btn.dataset.confirm=''; btn.textContent=btn.dataset.orig; clearTimeout(btn._t); };
+  if(btn.dataset.confirm!=='1'){ btn.dataset.confirm='1'; btn.textContent=label; btn._t=setTimeout(reset,3500); return; } reset(); fn(); }
+function pohjaOptions(){ $('pohja').innerHTML='<option value="">Tyhjä tontti</option>'+Object.entries(T.pohjat).map(([pk,p])=>`<option value="${pk}">${esc(p.nimi)}</option>`).join(''); }
+function deleteTontti(){ const key=$('tontti').value, t=DATA.tontit[key]; if(!t) return;
+  if(Object.keys(DATA.tontit).length<2){ toast('Viimeistä aluetta ei voi poistaa – luo ensin uusi suunnittelualue.'); return; }
+  const btn=$('del-tontti');
+  confirmBtn(btn, t.oma?'Vahvista: poista alue ja sen suunnitelmat':'Vahvista: piilota alue', ()=>{
+    let n=0;
+    if(t.oma){ delete DATA.tontit[key]; saveOwn();
+      try{ const K='kaavaeditori-suunnitelmat', all=JSON.parse(localStorage.getItem(K)||'{}'); for(const id in all) if(all[id].tontti===key){ delete all[id]; n++; } localStorage.setItem(K,JSON.stringify(all)); }catch(e){} }
+    else { const h=hidRead(); if(!h.tontit.includes(key)) h.tontit.push(key); hidWrite(h); delete DATA.tontit[key]; }
+    tonttiOptions(); const first=Object.keys(DATA.tontit)[0]; $('tontti').value=first; setTontti(first); hiddenInfo();
+    toast(t.oma?`Poistettu: ${t.nimi}${n?` (${n} tallennettua suunnitelmaa)`:''}`:`Piilotettu: ${t.nimi} (palautettavissa)`); }); }
+function deletePohja(){ const pk=$('pohja').value; if(!pk){ toast('Valitse ensin poistettava pohja.'); return; } const key=$('tontti').value, nm=T.pohjat[pk]?.nimi||pk;
+  confirmBtn($('del-pohja'),'Vahvista piilotus', ()=>{ const h=hidRead(); const id=key+'|'+pk; if(!h.pohjat.includes(id)) h.pohjat.push(id); hidWrite(h);
+    delete T.pohjat[pk]; pohjaOptions(); $('pohja').value=''; cmpTable(calc()); hiddenInfo(); toast(`Pohja piilotettu: ${nm}`); }); }
+
+// ================= Suunnitelmien hallinta: tallenna, tallenna uutena versiona, monista =================
+let CUR=null, dirty=false, savedAt=null;
+const LASTK='kaavaeditori-viimeisin';
+function fmtTime(d){ return d.toLocaleString('fi-FI',{dateStyle:'short',timeStyle:'short'}); }
+function setStatus(){ const st=$('status'); if(!st) return;
+  if(!CUR){ st.textContent=dirty?'Ei tallennettu':'Uusi luonnos'; st.className='status'+(dirty?' dirty':''); }
+  else if(dirty){ st.textContent='Tallentamattomia muutoksia'; st.className='status dirty'; }
+  else { st.textContent='Tallennettu'+(savedAt?' '+savedAt.toLocaleTimeString('fi-FI',{hour:'2-digit',minute:'2-digit'}):''); st.className='status ok'; }
+  $('save-as').disabled=!CUR; $('save').title = CUR ? `Tallentaa muutokset suunnitelmaan "${CUR.nimi}" (Ctrl+S)` : 'Tallentaa uutena suunnitelmana (Ctrl+S)'; }
+function markDirty(){ if(!dirty){ dirty=true; setStatus(); } }
+function resetPlan(){ CUR=null; dirty=false; savedAt=null; setStatus(); renderPlans(); }
+function remember(){ try{ localStorage.setItem(LASTK, JSON.stringify({tontti:$('tontti').value, id:CUR?CUR.id:null})); }catch(e){} }
+function nextVersionName(n){ const names=new Set(plans.map(p=>p.nimi)); const m=n.match(/^(.*?)\s+v(\d+)$/); let base=m?m[1]:n, i=m?+m[2]+1:2;
+  while(names.has(`${base} v${i}`)) i++; return `${base} v${i}`; }
+function planDoc(nimi){ const R=calc(); return {tontti:$('tontti').value, nimi, tila:JSON.stringify(S), kem:Math.round(R.kem), e:Math.round(R.e*1000)/1000, asunnot:R.as, ap_tarve:R.tarve, ap_tarjonta:R.tarj, muokattu:new Date().toISOString()}; }
+async function savePlan(asNew){ if(!db){ toast('Tallennus ei ole käytettävissä'); return; }
+  let nimi=$('plan-name').value.trim()||'Nimetön luonnos'; const col=db.collection('suunnitelmat');
+  if(asNew && CUR && nimi===CUR.nimi) nimi=nextVersionName(nimi);
+  if((!CUR || asNew) && plans.some(p=>p.nimi===nimi)) nimi=nextVersionName(nimi);
+  $('save').disabled=true; $('save-as').disabled=true;
+  try{ if(CUR && !asNew){ await col.doc(CUR.id).set(planDoc(nimi)); CUR.nimi=nimi; toast('Tallennettu: '+nimi); }
+    else { const ref=await col.add(planDoc(nimi)); CUR={id:ref&&ref.id, nimi}; toast((asNew?'Uusi versio tallennettu: ':'Tallennettu: ')+nimi); }
+    $('plan-name').value=nimi; dirty=false; savedAt=new Date(); remember(); }
+  catch(e){ toast('Tallennus ei onnistunut: '+(e.code||e.message||'virhe')); }
+  $('save').disabled=false; setStatus(); renderPlans(); }
+function openPlan(p){ let st; try{ st=JSON.parse(p.tila); }catch(e){ toast('Suunnitelmaa ei voitu avata'); return; }
+  hist=[]; S=st; sel=null; CUR={id:p.id, nimi:p.nimi||'Nimetön'}; dirty=false; savedAt=new Date(p.muokattu); $('plan-name').value=CUR.nimi; syncNormi(); render(); setStatus(); renderPlans(); remember(); toast('Avattu: '+CUR.nimi); }
+async function duplicatePlan(p){ const nimi=nextVersionName(p.nimi||'Nimetön'); try{ const ref=await db.collection('suunnitelmat').add({...p, id:undefined, nimi, muokattu:new Date().toISOString()});
+    const np={...p, id:ref&&ref.id, nimi}; openPlan(np); toast('Monistettu: '+nimi+' – muokkaa ja tallenna'); }catch(e){ toast('Monistus ei onnistunut'); } }
+function renderPlans(){ const el=$('plans'); if(!el) return; if(!db){ el.innerHTML=''; return; }
+  if(!plans.length){ el.innerHTML='<p class="hint" style="margin:0">Tälle alueelle ei ole vielä tallennettuja suunnitelmia. Muokkaa luonnosta ja paina Tallenna.</p>'; return; }
+  el.innerHTML=plans.map(p=>{ const cur=CUR&&CUR.id===p.id; return `<div class="pl${cur?' cur':''}"><span><b>${esc(p.nimi||'Nimetön')}</b>${cur?'<span class="tag">auki</span>':''}<br><small>${p.e!=null?`e ${fi(p.e)} · ${fmt(p.kem)} k-m² · ${p.ap_tarjonta??'–'}/${p.ap_tarve??'–'} ap · `:''}${fmtTime(new Date(p.muokattu))}</small></span>
+    <span class="row">${cur?'':`<button type="button" data-load="${p.id}">Avaa</button>`}<button type="button" data-dup="${p.id}" title="Tee kopio uudeksi versioksi">Monista</button><button type="button" class="del" data-delp="${p.id}" title="Poista suunnitelma">×</button></span></div>`; }).join(''); }
+function planListClicks(ev){ const l=ev.target.closest('[data-load]'), d=ev.target.closest('[data-dup]'), x=ev.target.closest('[data-delp]');
+  if(l){ const p=plans.find(q=>q.id===l.dataset.load); if(!p) return; if(dirty) confirmBtn(l,'Hylkää muutokset?',()=>openPlan(p)); else openPlan(p); }
+  if(d){ const p=plans.find(q=>q.id===d.dataset.dup); if(p) duplicatePlan(p); }
+  if(x){ confirmBtn(x,'Poista?',async()=>{ try{ await db.collection('suunnitelmat').doc(x.dataset.delp).delete(); if(CUR&&CUR.id===x.dataset.delp){ CUR=null; dirty=true; setStatus(); } toast('Poistettu'); }catch(e){ toast('Poisto ei onnistunut'); } }); } }
+function restoreLast(){ let last=null; try{ last=JSON.parse(localStorage.getItem(LASTK)||'null'); }catch(e){}
+  if(!last||!DATA.tontit[last.tontti]) return; if($('tontti').value!==last.tontti){ $('tontti').value=last.tontti; setTontti(last.tontti); }
+  const p=last.id&&plans.find(q=>q.id===last.id); if(p) openPlan(p); }
+// välilehdet
+function showTab(t){ document.querySelectorAll('.tabs [data-t]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.t===t))); document.querySelectorAll('[data-tab]').forEach(p=>p.hidden=p.dataset.tab!==t); try{ localStorage.setItem('kaavaeditori-tab',t); }catch(e){} }
+
+
+// ---------- käynnistys ----------
+(async()=>{
+  DATA={"paivitetty":"9.11.2026","tontit":{"espoo-22307":{"nimi":"Kortteli 22307, Piispankallio","kunta":"Espoo","tunnus":"49-22-307-3 + korttelin muut tontit","origo":[25485724,6672744],"ang":46.41334874550394,"kortteli":[[-33.59,52.8],[10.26,53.56],[34.35,52.8],[54.72,53.77],[60.07,49.74],[64.67,46.5],[63.32,2.21],[61.42,-21.45],[55.38,-27.12],[22.71,-33.6],[-20.28,-52.07],[-60.98,-71.33],[-68.32,-52.12],[-52.34,-3.84],[-42.85,24.9]],"reunat":["Kuitinmäentie","Kuitinmäentie","Kuitinmäentie","Kuitinmäentie","Kuitinmäentie","Piispankallio","Piispankallio","Piispankallio","Piispankallio","Piispankallio","Piispankallio","Piispanpelto","Piispankyläntie","Piispankyläntie","Piispankyläntie"],"sb":{"Kuitinmäentie":5,"Piispankallio":4,"Piispanpelto":4,"Piispankyläntie":4},"A":11138.9,"tontit":{"49-22-307-3":[[4.75,24.69],[31.34,18.26],[63.32,2.21],[61.42,-21.45],[55.38,-27.12],[22.71,-33.6],[-20.28,-52.07],[-9.16,-17.96],[0.26,10.53]],"49-427-1-477":[[4.75,24.69],[9.54,38.67],[10.26,53.56],[34.35,52.8],[29.91,18.44]],"49-427-1-478":[[-33.59,52.8],[9.54,38.67],[4.75,24.69],[0.26,10.53],[-42.85,24.9]],"49-427-1-479":[[-52.34,-3.84],[-42.85,24.9],[0.26,10.53],[-9.16,-17.96]],"kaavatontti NE (vaalea)":[[34.35,52.8],[54.72,53.77],[60.07,49.74],[64.67,46.5],[63.32,2.21],[31.34,18.26]],"kaavatontti NW (kolmio)":[[-33.59,52.8],[10.26,53.56],[9.54,38.67]],"kaavatontti S":[[-52.34,-3.84],[-9.16,-17.96],[-20.28,-52.07],[-60.98,-71.33],[-68.32,-52.12]]},"naapurit":[[[-179.61,-14.06],[-142.83,-17.51],[-144.75,-27.04],[-117.4,-36.41],[-129.45,-72.25],[-158.23,-67.19],[-187.89,-61.98],[-194.59,-57.45],[-224.03,-37.58],[-219.55,7.85],[-178.83,1.56]],[[-137.48,47.21],[-130.88,57.98],[-56.48,55.65],[-54.6,31.36],[-67.46,-7.53],[-76.89,-4.4]],[[-142.83,-17.51],[-133.86,30.99],[-103.54,5.16],[-117.4,-36.41],[-144.75,-27.04]],[[-181.56,-100.88],[-154.98,-91.19],[-132.98,-83.82],[-102.77,-89.13],[-100.16,-95.16],[-109.42,-122.59],[-136.38,-118.97],[-161.75,-115.55],[-184.67,-112.47]],[[-129.45,-72.25],[-117.4,-36.41],[-84.72,-47.78],[-93.11,-72.7],[-100.51,-77.34]],[[-219.55,7.85],[-215.34,52.65],[-176.41,46.37],[-178.83,1.56]],[[-117.4,-36.41],[-103.54,5.16],[-78.4,-16.26],[-75.94,-21.84],[-84.72,-47.78]],[[-192.31,-99.41],[-188.13,-74.12],[-132.98,-83.82],[-154.98,-91.19],[-181.56,-100.88]],[[-83.04,-96.01],[-19.12,-118.59],[-30.79,-154.88],[-45.04,-150.2],[-53.65,-154.27],[-89.25,-142.35],[-94.94,-131.31]],[[33.03,-183.95],[46.03,-141.96],[64.23,-148.63],[75.31,-174.78],[66.17,-204.88],[48.86,-197.36],[46.06,-189.6]],[[21.3,137.31],[31.9,134.85],[65.61,126.91],[63.86,120.93],[65.13,120.56],[56.84,93.63],[9.35,93.74]],[[-70.61,155.51],[-18.43,153.77],[-32.54,109.88],[-50.57,108.37],[-62.16,124.77],[-69.79,150.74]],[[-27.56,102.5],[-13.75,145.44],[21.3,137.31],[9.35,93.74]],[[91.97,50.89],[149.66,49.02],[162.25,47.84],[174.8,46.25],[187.3,44.27],[193.6,43.12],[193.91,41.14],[199.76,3.6],[201.19,-4.27],[203.01,-12.06],[205.22,-19.75],[207.81,-27.32],[210.77,-34.74],[214.11,-42.02],[217.8,-49.11],[221.22,-55.02],[215.78,-68.5],[143.66,-35.81],[136.69,-32.61],[107.73,-32.26],[76.69,-31.88],[80.94,44.0]]],"rakennukset":[{"krs":2,"xy":[[104.74,45.03],[163.68,41.73],[162.77,25.68],[159.5,25.86],[159.12,19.06],[162.4,18.89],[160.33,-18.28],[101.38,-14.99],[103.42,22.18],[106.71,21.98],[107.11,28.79],[103.82,28.99]]},{"krs":2,"xy":[[-6.55,110.48],[-3.16,128.69],[-6.49,129.28],[-5.95,132.08],[-5.35,135.19],[-0.67,134.37],[-0.24,136.53],[7.4,135.21],[6.4,129.84],[8.25,129.54],[7.47,125.4],[5.4,125.76],[2.29,108.9]]},{"krs":5,"xy":[[102.17,-65.2],[102.33,-48.75],[101.74,-48.75],[101.81,-42.92],[104.26,-42.95],[104.27,-42.68],[118.92,-42.84],[118.82,-47.6],[118.83,-51.3],[121.23,-51.33],[121.13,-58.77],[122.2,-58.78],[122.2,-61.06],[118.73,-61.05],[118.55,-77.8],[118.02,-77.79],[118.01,-79.65],[104.5,-79.53],[104.52,-77.61],[103.92,-77.61],[104.04,-65.22]]},{"krs":4,"xy":[[48.37,-47.46],[53.31,-47.02],[53.15,-45.33],[56.37,-45.03],[56.53,-46.72],[69.67,-45.53],[70.75,-57.15],[70.95,-59.44],[66.79,-59.85],[64.08,-60.09],[64.29,-62.37],[56.24,-63.1],[56.03,-60.82],[52.71,-61.12],[52.92,-63.4],[48.92,-63.76],[48.71,-61.48],[45.89,-61.74],[39.82,-62.27],[39.6,-59.97],[38.55,-48.35]]},{"krs":4,"xy":[[-4.61,-67.04],[7.24,-61.59],[7.67,-62.43],[10.96,-60.92],[9.92,-58.78],[17.48,-55.29],[18.48,-57.46],[20.94,-56.32],[25.85,-67.01],[12.9,-72.99],[13.32,-73.96],[0.82,-79.66],[0.17,-78.25],[-2.47,-79.47],[-2.19,-80.07],[0.56,-86.0],[-9.69,-90.74],[-10.06,-89.91],[-12.13,-90.86],[-14.67,-85.1],[-19.4,-74.89],[-13.98,-72.4],[-15.01,-70.23],[-7.46,-66.72],[-6.43,-68.92],[-4.22,-67.9]]},{"krs":1,"xy":[[-32.17,-74.55],[-29.02,-73.08],[-26.93,-77.62],[-30.09,-79.09]]},{"krs":1,"xy":[[-75.15,-4.72],[-73.91,-0.97],[-71.73,-1.68],[-61.46,29.39],[-56.24,27.66],[-66.5,-3.39],[-67.75,-7.18]]}],"kadut":[{"nimi":"KUITINMÄENTIE","xy":[7.29,63.64],"rot":45},{"nimi":"PIISPANKALLIO","xy":[-16.54,-76.45],"rot":-71},{"nimi":"PIISPANKALLIO","xy":[68.55,19.95],"rot":-46},{"nimi":"PIISPANPELTO","xy":[-71.6,-34.48],"rot":-38},{"nimi":"Piispankyläntie (kevyt liikenne)","xy":[-57.01,20.71],"rot":-62}],"sisaanajo":[[-12.51,-40.15],[-7.04,-37.69],[-3.76,-44.97],[-9.27,-47.34]],"kaava":"Asemakaava 321600 (2000), määräykset skannattuja. Rajat osin digitoitu karttaotteesta (±1 m).","lahde":"© Espoon kaupunki, paikkatieto (CC BY 4.0)","pohjat":{"P1":{"nimi":"P1 – pihapaikat (kevennetty normi)","objektit":[{"id":"R1","tyyppi":"lamelli","cx":13.0,"cy":41.2,"l":78,"d":12.5,"a":0,"krs":5,"ylin":0.8,"halli":false,"hlev":null},{"id":"R2","tyyppi":"lamelli","cx":51.0,"cy":6.0,"l":34,"d":12.5,"a":90,"krs":4,"ylin":1,"halli":false,"hlev":null},{"id":"R3","tyyppi":"lamelli","cx":-33.0,"cy":0.0,"l":50,"d":12.5,"a":72,"krs":4,"ylin":0.8,"halli":false,"hlev":null},{"id":"P1","tyyppi":"piha","cx":-10.8,"cy":-36.64,"l":85.0,"d":16,"a":24.26}],"normi":{"normi":110,"kevennys":0.3,"apmin":0.4}},"P2":{"nimi":"P2 – halli R1:n alla (ramppi R2:ssa) + pihapaikat","objektit":[{"id":"R1","tyyppi":"lamelli","cx":13.0,"cy":41.2,"l":78,"d":12.5,"a":0,"krs":6,"ylin":1,"halli":true,"hlev":16},{"id":"R2","tyyppi":"lamelli","cx":51.0,"cy":6.0,"l":34,"d":12.5,"a":90,"krs":5,"ylin":1,"halli":false,"hlev":null},{"id":"R3","tyyppi":"lamelli","cx":-33.0,"cy":0.0,"l":50,"d":12.5,"a":72,"krs":6,"ylin":0.5,"halli":false,"hlev":null},{"id":"P1","tyyppi":"piha","cx":-10.8,"cy":-36.64,"l":85.0,"d":16,"a":24.26},{"id":"RP","tyyppi":"ramppi","cx":47.75,"cy":2.5,"l":27.0,"d":6.0,"a":90.0}],"normi":{"normi":110,"kevennys":0.0,"apmin":0.5}},"P3":{"nimi":"P3 – pihakannen alainen halli","objektit":[{"id":"R1","tyyppi":"lamelli","cx":13.0,"cy":40.95,"l":78,"d":13.0,"a":0,"krs":7,"ylin":1,"halli":false,"hlev":null},{"id":"R2","tyyppi":"lamelli","cx":51.0,"cy":4.0,"l":38,"d":12.5,"a":90,"krs":6,"ylin":1,"halli":false,"hlev":null},{"id":"R3","tyyppi":"lamelli","cx":-33.0,"cy":0.0,"l":50,"d":12.5,"a":72,"krs":6,"ylin":0.9,"halli":false,"hlev":null},{"id":"RP","tyyppi":"ramppi","cx":-14.3,"cy":-28.89,"l":27.0,"d":6.0,"a":114.26},{"id":"K1","tyyppi":"kansi","cx":6.94,"cy":7.15,"a":0,"poly":[[-15.39,-32.86],[-19.39,-32.86],[-24.05,-22.5],[-29.52,-24.97],[-25.97,-32.86],[-41.72,-32.86],[-22.18,27.3],[37.81,27.3],[37.81,-8.88]]}],"normi":{"normi":110,"kevennys":0.0,"apmin":0.5}},"B-V1":{"nimi":"Versio B: V1 – pistetalot, pihapaikat","objektit":[{"id":"R1","tyyppi":"piste","cx":-12,"cy":37.5,"l":20,"d":20,"a":0,"krs":5,"ylin":0.7,"halli":false,"hlev":null},{"id":"R2","tyyppi":"piste","cx":28,"cy":37.5,"l":20,"d":20,"a":0,"krs":4,"ylin":1.0,"halli":false,"hlev":null},{"id":"R3","tyyppi":"piste","cx":48,"cy":0,"l":20,"d":20,"a":90,"krs":4,"ylin":1.0,"halli":false,"hlev":null},{"id":"R4","tyyppi":"piste","cx":-33,"cy":-3,"l":20,"d":20,"a":72,"krs":4,"ylin":1.0,"halli":false,"hlev":null},{"id":"P1","tyyppi":"piha","cx":-11.94,"cy":-37.16,"l":67.5,"d":16,"a":24.26}],"normi":{"normi":110,"kevennys":0.3,"apmin":0.4}},"B-V2":{"nimi":"Versio B: V2 – lamellit + pistetalo, halli R1:n alla + pihapaikat","objektit":[{"id":"R1","tyyppi":"lamelli","cx":21,"cy":40.55,"l":60,"d":14,"a":0,"krs":5,"ylin":1.0,"halli":true,"hlev":16},{"id":"R2","tyyppi":"lamelli","cx":51,"cy":6,"l":34,"d":14,"a":90,"krs":5,"ylin":1.0,"halli":false,"hlev":null},{"id":"R3","tyyppi":"piste","cx":-33,"cy":0,"l":22,"d":20,"a":72,"krs":6,"ylin":0.6,"halli":false,"hlev":null},{"id":"P1","tyyppi":"piha","cx":-10.8,"cy":-36.64,"l":70.0,"d":16,"a":24.26},{"id":"RP","tyyppi":"ramppi","cx":47.0,"cy":2.5,"l":27.0,"d":6.0,"a":90.0}],"normi":{"normi":110,"kevennys":0.0,"apmin":0.5}},"B-V3":{"nimi":"Versio B: V3 – kolme lamellia, pihakansi","objektit":[{"id":"R1","tyyppi":"lamelli","cx":14,"cy":40.55,"l":76,"d":14,"a":0,"krs":5,"ylin":1.0,"halli":false,"hlev":null},{"id":"R2","tyyppi":"lamelli","cx":50.8,"cy":4,"l":38,"d":14,"a":90,"krs":5,"ylin":1.0,"halli":false,"hlev":null},{"id":"R3","tyyppi":"lamelli","cx":-37.9,"cy":1.5,"l":46,"d":14,"a":72,"krs":5,"ylin":0.7,"halli":false,"hlev":null},{"id":"RP","tyyppi":"ramppi","cx":-14.3,"cy":-28.89,"l":27.0,"d":6.0,"a":114.26},{"id":"K1","tyyppi":"kansi","cx":4.6,"cy":7.17,"a":0,"poly":[[-6.01,-29.71],[-18.47,-29.71],[-21.71,-22.53],[-27.18,-24.99],[-25.05,-29.71],[-42.95,-29.71],[-24.72,26.38],[39.2,26.38],[39.2,-9.33]]}],"normi":{"normi":110,"kevennys":0.0,"apmin":0.5}}}}}}; loadOwn(); applyHidden(); tonttiOptions();
+  layerUI(); setTontti(Object.keys(DATA.tontit)[0]);
+  window.addEventListener('resize',()=>render());
+  if(window.claude?.use){
+    claude.use('downloads').then(d=>{ dl=d; if(!d){ $('export-json').hidden=true; $('export-svg').hidden=true; } });
+    claude.use('db').then(d=>{ db=d; if(!d){ $('save').disabled=true; $('plans-hint').textContent='Tallennus vaatii sisäänkirjautumisen. Voit silti muokata ja ladata JSON-tiedoston.'; } subscribePlans(); });
+  } else { db=localDB(); dl=localDL; $('plans-hint').textContent='Suunnitelmat tallentuvat tämän selaimen muistiin. Toiselle koneelle tai claude.ai-editoriin ne siirtyvät JSON-tiedostona.'; subscribePlans(); }
+  // suunnitelmat
+  $('save').onclick=()=>savePlan(false); $('save-as').onclick=()=>savePlan(true);
+  $('plans').addEventListener('click',planListClicks);
+  $('plan-name').addEventListener('input',markDirty);
+  document.addEventListener('keydown',ev=>{ if((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='s'){ ev.preventDefault(); savePlan(false); } });
+  window.addEventListener('beforeunload',ev=>{ if(dirty){ ev.preventDefault(); ev.returnValue=''; } });
+  // välilehdet
+  document.querySelectorAll('.tabs [data-t]').forEach(b=>b.onclick=()=>showTab(b.dataset.t));
+  let tab='kohde'; try{ tab=localStorage.getItem('kaavaeditori-tab')||'kohde'; }catch(e){} showTab(tab);
+  // alue, poisto, uusi alue
+  vaInit(); hiddenInfo(); $('del-tontti').onclick=deleteTontti; $('del-pohja').onclick=deletePohja;
+  $('import-json').onclick=()=>$('import-file').click(); $('import-file').addEventListener('change',e=>{ if(e.target.files[0]) importJSON(e.target.files[0]); e.target.value=''; });
+  restoreLast(); setStatus();
+  let first=false; try{ first=!localStorage.getItem('kaavaeditori-aloitettu'); localStorage.setItem('kaavaeditori-aloitettu','1'); }catch(e){}
+  if(first) vaOpen(true);
+})();
+
+</script>
+</body>
+</html>
